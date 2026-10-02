@@ -15,7 +15,7 @@ const app = document.querySelector('#app')
 const $ = (sel) => document.querySelector(sel)
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('vi-VN') : '')
-const jqlLink = (jql) => `${cfg.url}/issues/?jql=${encodeURIComponent(jql)}`
+const jqlLink = (jql) => `${cfg.url}/issues/?jql=${encodeURIComponent(forSubject(jql))}`
 const host = () => {
   try {
     return new URL(cfg.url).host
@@ -32,17 +32,20 @@ async function api(path) {
   return r.json()
 }
 
-const FIELDS = 'summary,status,priority,issuetype,duedate,updated,project'
+const FIELDS = 'summary,status,priority,issuetype,assignee,duedate,updated,project'
+// Member being viewed ({ name, displayName }); null = the connected user.
+let subject = null
+const forSubject = (jql) => (subject ? jql.replaceAll('currentUser()', `"${subject.name.replace(/["\\]/g, '\\$&')}"`) : jql)
 const search = (jql, max = 50, extraFields = '') =>
-  api(`/rest/api/2/search?maxResults=${max}&fields=${FIELDS}${extraFields}&jql=${encodeURIComponent(jql)}`)
+  api(`/rest/api/2/search?maxResults=${max}&fields=${FIELDS}${extraFields}&jql=${encodeURIComponent(forSubject(jql))}`)
 
 // Edit freely: [title, JQL, card color]
 const SECTIONS = [
   ['Đang làm', 'assignee = currentUser() AND statusCategory = "In Progress" ORDER BY updated DESC', 'c-blue'],
   ['To do', 'assignee = currentUser() AND statusCategory = "To Do" ORDER BY priority DESC, updated DESC', ''],
-  ['Bugs của tôi', 'assignee = currentUser() AND issuetype = Bug AND statusCategory != Done ORDER BY priority DESC', 'c-red'],
+  ['Bugs', 'assignee = currentUser() AND issuetype = Bug AND statusCategory != Done ORDER BY priority DESC', 'c-red'],
   ['Quá hạn', 'assignee = currentUser() AND statusCategory != Done AND duedate < startOfDay() ORDER BY duedate', 'c-amber'],
-  ['Tôi report', 'reporter = currentUser() AND statusCategory != Done ORDER BY updated DESC', ''],
+  ['Đã report', 'reporter = currentUser() AND statusCategory != Done ORDER BY updated DESC', ''],
   ['Đang watch', 'watcher = currentUser() AND statusCategory != Done ORDER BY updated DESC', 'c-sky'],
   // ponytail: workflow doesn't set resolution & DC lacks statusCategoryChangedDate, so "updated" approximates done-date
   ['Xong 14 ngày qua', 'assignee = currentUser() AND statusCategory = Done AND updated >= -14d ORDER BY updated DESC', 'c-green'],
@@ -50,6 +53,7 @@ const SECTIONS = [
 
 // ---- Client-side filters (like gitlab-pipelines-viewer's filter bar) ----
 const filters = { search: '', status: '', project: '', type: '' }
+const assigneeName = (f) => f.assignee?.displayName ?? 'Unassigned'
 const matches = ({ key, fields: f }) => {
   const q = filters.search.trim().toLowerCase()
   return (
@@ -65,7 +69,7 @@ function table(all) {
   const issues = all.filter(matches)
   if (!issues.length) return '<p class="empty">Không có issue khớp bộ lọc.</p>'
   const today = new Date().toLocaleDateString('sv') // YYYY-MM-DD local
-  return `<table><thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Type</th><th>Priority</th><th>Due</th><th>Updated</th></tr></thead><tbody>${issues
+  return `<table><thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Type</th><th>Assignee</th><th>Priority</th><th>Due</th><th>Updated</th></tr></thead><tbody>${issues
     .map(({ key, fields: f }) => {
       const cat = f.status?.statusCategory?.key
       const overdue = f.duedate && cat !== 'done' && f.duedate < today
@@ -74,6 +78,7 @@ function table(all) {
         <td>${esc(f.summary)}</td>
         <td><span class="badge st-${esc(cat)}">${esc(f.status?.name)}</span></td>
         <td>${esc(f.issuetype?.name)}</td>
+        <td class="dim">${esc(assigneeName(f))}</td>
         <td>${esc(f.priority?.name)}</td>
         <td class="dim ${overdue ? 'overdue' : ''}">${fmtDate(f.duedate)}</td>
         <td class="dim">${fmtDate(f.updated)}</td>
@@ -123,6 +128,18 @@ const set = (sel, html) => {
   if (el) el.innerHTML = html
 }
 
+// Assignable users of every project seen in loaded issues (full member list, not just current assignees).
+let members = [] // { name, displayName }
+let me = null // connected user; listed first in the member suggestions
+let memberProjects = ''
+async function loadMembers() {
+  const keys = [...new Set([...views.values()].flatMap((v) => v.issues.map((i) => i.fields.project?.key)).filter(Boolean))].sort().join(',')
+  if (!keys || keys === memberProjects) return
+  const users = await api(`/rest/api/2/user/assignable/multiProjectSearch?maxResults=1000&projectKeys=${encodeURIComponent(keys)}`)
+  memberProjects = keys
+  members = users.map(({ name, displayName }) => ({ name, displayName }))
+}
+
 // Last loaded data per section body, so filters re-render without refetching.
 const views = new Map() // selector -> { issues, render }
 const show = (sel, view) => {
@@ -137,12 +154,16 @@ function fillOptions() {
   const fill = (sel, label, values) => {
     const el = $(sel)
     if (!el) return
-    const cur = el.value
+    const cur = filters[el.dataset.f] // source of truth survives shell re-render
     const opts = [...new Set([...values, cur].filter(Boolean))].sort()
     el.innerHTML = `<option value="">${label}: All</option>` + opts.map((v) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(v)}</option>`).join('')
   }
   fill('#f-project', 'Project', all.map((i) => i.fields.project?.key))
   fill('#f-type', 'Type', all.map((i) => i.fields.issuetype?.name))
+  const seen = new Map([...members, ...all.map((i) => i.fields.assignee).filter(Boolean)].map((u) => [u.name, u]))
+  if (me) seen.delete(me.name)
+  const list = [...(me ? [me] : []), ...[...seen.values()].sort((a, b) => a.displayName.localeCompare(b.displayName))]
+  set('#members', list.map((u) => `<option value="${esc(u.displayName)}" label="${esc(u.name)}">`).join(''))
 }
 
 // ---- Auto refresh (same options as gitlab-pipelines-viewer) ----
@@ -152,29 +173,40 @@ let loading = false
 let lastUpdated = 0
 
 // Updates sections in place, so old data stays visible while reloading.
+// `gen` changes when the dashboard is rebuilt (e.g. another member picked): stale responses are dropped.
+let gen = 0
 async function refresh() {
   if (loading) return
+  const g = gen
+  const live = () => g === gen
   loading = true
   $('#refresh').disabled = true
   set('#next', '')
   await Promise.allSettled([
-    sprints().then((v) => show('#sprint', v), (e) => show('#sprint', { issues: [], render: () => errBox(e) })),
+    sprints().then(
+      (v) => live() && show('#sprint', v),
+      (e) => live() && show('#sprint', { issues: [], render: () => errBox(e) }),
+    ),
     ...SECTIONS.map(([, jql], k) =>
       search(jql).then(
         (r) => {
+          if (!live()) return
           set(`#n${k}`, r.total)
           const more = r.total > r.issues.length ? `<p class="muted pad">Hiển thị ${r.issues.length}/${r.total}.</p>` : ''
           show(`#b${k}`, { issues: r.issues, render: () => table(r.issues) + more })
         },
         (e) => {
+          if (!live()) return
           set(`#n${k}`, '!')
           show(`#b${k}`, { issues: [], render: () => errBox(e) })
         },
       ),
     ),
   ])
+  if (!live()) return // a newer refresh owns the page now
   loading = false
   lastUpdated = Date.now()
+  await loadMembers().catch(() => {}) // fall back to names from loaded issues
   fillOptions()
   if (!$('#refresh')) return // left the dashboard meanwhile
   $('#refresh').disabled = false
@@ -191,7 +223,10 @@ setInterval(() => {
 }, 1000)
 
 // ---- Screens ----
-function showDashboard(me, err) {
+function showDashboard(user, err) {
+  me = user
+  gen++
+  loading = false
   app.innerHTML = `<main>
     <header>
       <div>
@@ -200,6 +235,8 @@ function showDashboard(me, err) {
         <p class="meta">Jira: ${esc(host())} · Last Updated: <span id="updated">-</span></p>
       </div>
       <div class="actions">
+        <input id="member" type="search" list="members" aria-label="Member" placeholder="👤 Member: ${esc(me?.displayName ?? 'me')}" value="${esc(subject?.displayName)}">
+        <datalist id="members"></datalist>
         <label class="auto">Auto Refresh
           <select id="auto">${INTERVALS.map(([l, v]) => `<option value="${v}" ${v === autoMs ? 'selected' : ''}>${l}</option>`).join('')}</select>
         </label>
@@ -229,8 +266,19 @@ function showDashboard(me, err) {
   }
   $('#f-clear').onclick = () => {
     Object.keys(filters).forEach((k) => (filters[k] = ''))
-    document.querySelectorAll('.filters [data-f]').forEach((el) => (el.value = ''))
+    document.querySelectorAll('[data-f]').forEach((el) => (el.value = ''))
     rerender()
+  }
+  // Picking a member reloads the whole dashboard for them; partial text = still typing.
+  $('#member').oninput = (e) => {
+    const v = e.target.value.trim()
+    const all = [...(me ? [me] : []), ...members]
+    const u = v ? all.find((m) => m.displayName === v || m.name === v) : null
+    if (v && !u) return
+    const next = u && u.name !== me?.name ? u : null
+    if ((next?.name ?? null) === (subject?.name ?? null)) return
+    subject = next
+    showDashboard(me)
   }
   views.clear()
   if (!ENV_MODE) $('#settings').onclick = () => showForm('', true)

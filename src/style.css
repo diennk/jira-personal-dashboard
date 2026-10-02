@@ -84,3 +84,4 @@ button:disabled { opacity: .5; cursor: default; }
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
 .filters input { flex: 1; min-width: 16rem; border: 1px solid var(--ctl); background: var(--card); color: var(--strong); border-radius: 6px; padding: 6px 12px; font: inherit; }
 .filters select { max-width: 12rem; }
+#member { width: 14rem; border: 1px solid var(--ctl); background: var(--card); color: var(--strong); border-radius: 6px; padding: 6px 8px; font: inherit; }

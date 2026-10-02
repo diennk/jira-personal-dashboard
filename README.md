@@ -41,7 +41,8 @@ Có 2 cách, chọn một:
 
 - **Summary cards**: số issue của từng nhóm, click để nhảy tới section.
 - **Sprint hiện tại**: issue của bạn trong các sprint active, progress (done/total), số ngày còn lại.
-- **Sections**: Đang làm, To do, Bugs của tôi, Quá hạn, Tôi report, Đang watch, Xong 14 ngày qua. Mỗi section có link *Mở trong Jira* với JQL tương ứng.
+- **Sections**: Đang làm, To do, Bugs, Quá hạn, Đã report, Đang watch, Xong 14 ngày qua. Mỗi section có link *Mở trong Jira* với JQL tương ứng.
+- **Member** (header): gõ để tìm thành viên (assignable users của các project đang hiển thị, bản thân ở đầu danh sách). Chọn một người sẽ tải lại toàn bộ dashboard cho người đó (thay `currentUser()` trong JQL bằng username của họ). Xoá ô để quay về bản thân.
 - **Search / filter**: lọc theo key/summary, status category, project, type (lọc phía client trên dữ liệu đã tải).
 - **Auto refresh**: Off / 10s / 30s / 60s / 5m, có đếm ngược.
 
