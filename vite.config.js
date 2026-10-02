@@ -20,10 +20,11 @@ export default defineConfig(({ mode }) => {
       res.statusCode = 401
       return res.end('Jira URL / token not configured')
     }
-    // Reads, plus the only two writes the app makes: add a worklog (POST) and move one (PUT).
+    // Reads, plus the only writes the app makes: create an issue, add a worklog (POST), move one (PUT).
     const path = req.url.split('?')[0]
     const allowed =
       req.method === 'GET' ||
+      (req.method === 'POST' && path === '/rest/api/2/issue') ||
       (req.method === 'POST' && /^\/rest\/api\/2\/issue\/[^/]+\/worklog$/.test(path)) ||
       (req.method === 'PUT' && /^\/rest\/api\/2\/issue\/[^/]+\/worklog\/\d+$/.test(path))
     if (!allowed) {

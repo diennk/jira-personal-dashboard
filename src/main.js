@@ -357,6 +357,7 @@ function calHtml(days) {
       <div class="dhead"><button class="dn" data-week="${r.w.key}" aria-pressed="${r === sel}" aria-label="${esc(tip)}">${r.w.start.getDate()}</button><span class="dh">${r.logged ? hrs(r.logged) : ''}</span></div>
       <div class="chips">${chips}${missing ? '<span class="miss">⚠ Chưa log</span>' : ''}</div>
       <span class="dm">${r.w.done.length ? `✓${r.w.done.length}` : ''} ${r.w.created ? `+${r.w.created}` : ''}</span>
+      ${subject ? '' : `<button class="add" data-add="${r.w.key}" title="Tạo task & log work ngày ${ddmm(r.w.start)}" aria-label="Tạo task và log work ngày ${ddmm(r.w.start)}">+</button>`}
     </div>`
   }
   return `<div class="cal-bar">
@@ -386,7 +387,7 @@ function backlogHtml() {
       </div>`
     })
     .join('')
-  return `<aside class="backlog"><b>Chưa logwork <span class="muted">${perfBacklog.length}</span></b>
+  return `<aside class="backlog"><div class="backlog-head"><b>Chưa logwork <span class="muted">${perfBacklog.length}</span></b><button class="mini" data-create title="Tạo sub-task mới (chưa log work)">+ Tạo task</button></div>
     <p class="muted">Kéo task vào ô ngày để log work.</p>${items || '<p class="empty">Task nào cũng đã có log.</p>'}</aside>`
 }
 
@@ -418,6 +419,170 @@ async function logWork({ issue, est }, day) {
   }
   const g = gen
   loadPerf(() => g === gen)
+}
+
+// ---- "+" in a day cell: create a task assigned to me and log work on it that day ----
+const metaCache = new Map() // project -> createmeta issue types
+const parentInfo = new Map() // issue key -> { summary, status, issuetype } (null = not found)
+
+// Full title of the chosen parent under the input: instant for suggestions, fetched for typed keys.
+let parentLookup = 0
+async function showParent(form, fetchUnknown) {
+  const key = form.parent.value.trim().toUpperCase()
+  const render = (f) =>
+    set('#cd-parent', f === undefined ? '' : f === null ? `<span class="bad">✕ Không tìm thấy ${esc(key)}</span>`
+      : `<b>${esc(key)}</b> ${esc(f.summary)} <span class="badge st-${esc(f.status?.statusCategory?.key)}">${esc(f.status?.name)}</span>${f.issuetype?.subtask ? ' <span class="bad">(là sub-task)</span>' : ''}`)
+  if (!key) return render(undefined)
+  if (parentInfo.has(key)) return render(parentInfo.get(key))
+  render(undefined)
+  if (!fetchUnknown || !/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) return
+  const n = ++parentLookup
+  const f = await api(`/rest/api/2/issue/${encodeURIComponent(key)}?fields=summary,status,issuetype`).then((r) => r.fields, () => null)
+  parentInfo.set(key, f)
+  if (n === parentLookup && form.parent.value.trim().toUpperCase() === key) render(f)
+}
+async function loadCreateMeta(form) {
+  const project = form.project.value
+  if (!metaCache.has(project)) metaCache.set(project, api(`/rest/api/2/issue/createmeta/${encodeURIComponent(project)}/issuetypes`).then((r) => r.values))
+  const sub = (await metaCache.get(project)).find((t) => t.subtask)
+  if (!sub) throw new Error(`Project ${project} không có loại Sub-task`)
+  form.type.value = sub.id
+  set('#cd-type', esc(sub.name))
+  // Parent suggestions: every non-sub-task issue in my active sprints (+ the sprint picked in the Sprint section),
+  // with the parents of my recent sub-tasks first.
+  const sprintIds = [...new Set([...sprintList.filter((sp) => sprintState(sp) === 'ACTIVE').map((sp) => String(sp.id)), pickedSprint].filter(Boolean))]
+  const q = (jql) => encodeURIComponent(`project = "${project}" AND ${jql}`)
+  const [recent, inSprint] = await Promise.all([
+    api(`/rest/api/2/search?maxResults=100&fields=parent&jql=${q('assignee = currentUser() AND issuetype in subTaskIssueTypes() ORDER BY updated DESC')}`).then((r) => r.issues),
+    sprintIds.length
+      ? pages(`/rest/api/2/search?fields=summary,status,issuetype&jql=${q(`sprint in (${sprintIds.map(Number).join(',')}) AND issuetype not in subTaskIssueTypes() ORDER BY Rank`)}`, 'issues')
+      : [],
+  ])
+  const parents = new Map(recent.filter((i) => i.fields.parent).map((i) => [i.fields.parent.key, i.fields.parent.fields]))
+  for (const i of inSprint) parents.set(i.key, i.fields) // keeps recent ones first (Map insertion order)
+  parents.forEach((f, k) => parentInfo.set(k, f))
+  set('#parents', [...parents].map(([k, f]) => `<option value="${esc(k)}" label="${esc(`${f.summary} [${f.status?.name}]`)}">`).join(''))
+  set('#cd-parents', `${parents.size} parent gợi ý${sprintIds.length ? ` · ${inSprint.length} từ sprint ${sprintList.filter((sp) => sprintIds.includes(String(sp.id))).map((sp) => sp.name).join(', ') || sprintIds.join(', ')}` : ' · không có sprint active'}`)
+}
+// Create stays disabled until a parent and a summary are filled and the sub-task type is known.
+const syncCreateBtn = (form) => {
+  const btn = form.querySelector('.primary')
+  btn.disabled = !(form.type.value && form.parent.value.trim() && form.summary.value.trim())
+  const withLog = !!form.logged.value.trim()
+  btn.textContent = withLog ? 'Tạo & log work' : 'Tạo task'
+  set('#cd-title', withLog ? 'Tạo task & log work' : 'Tạo task')
+}
+
+// Default hours for a day = 8h minus what the connected user already logged that day (from the loaded calendar).
+const DAY_HOURS = 8 * 3600
+const loggedOn = (day) => sum([...(perfData?.find((w) => w.key === day)?.logs.values() ?? [])], (e) => e.seconds)
+function applyDayDefaults(form, day) {
+  if (form.dataset.withLog === 'false') return // sidebar "Tạo task": no log, fixed 8h estimate
+  const done = loggedOn(day)
+  const left = Math.max(0, DAY_HOURS - done)
+  const v = left ? hrs(left) : ''
+  // only overwrite values the user hasn't changed
+  if (!form.dataset.est || form.estimate.value === form.dataset.est) form.estimate.value = v
+  if (!form.dataset.log || form.logged.value === form.dataset.log) form.logged.value = v
+  form.dataset.est = form.dataset.log = v
+  set('#cd-day', `${ddmm(day)}${done ? ` · đã log ${hrs(done)}, còn ${left ? hrs(left) : '0h'}` : ''}`)
+}
+
+// withLog = false (sidebar): task only, estimate 8h; it then shows up in "Chưa logwork" to drag onto a day.
+async function openCreate(day, withLog = true) {
+  const dlg = $('#create-dlg')
+  const form = dlg.querySelector('form')
+  form.reset()
+  form.day.value = day
+  form.due.value = day
+  form.dataset.est = form.dataset.log = ''
+  form.dataset.withLog = String(withLog)
+  applyDayDefaults(form, day)
+  if (!withLog) {
+    form.estimate.value = form.dataset.est = '8h'
+    form.logged.value = form.dataset.log = ''
+    set('#cd-day', ddmm(day))
+  }
+  form.querySelector('.error').hidden = true
+  set('#cd-parent', '')
+  form.type.value = ''
+  set('#cd-type', 'Đang tải…')
+  syncCreateBtn(form)
+  const projects = [...new Set([...views.values()].flatMap((v) => v.issues.map((i) => i.fields.project?.key)).filter(Boolean))]
+  form.project.innerHTML = projects.map((k) => `<option>${esc(k)}</option>`).join('')
+  dlg.showModal()
+  form.parent.focus()
+  try {
+    await loadCreateMeta(form)
+    syncCreateBtn(form)
+  } catch (e) {
+    showCreateError(form, `Không tải được thông tin project: ${e.message}`)
+  }
+}
+const showCreateError = (form, msg) => {
+  const el = form.querySelector('.error')
+  el.textContent = msg
+  el.hidden = false
+}
+
+// One submit at a time: a double click must not create the task twice.
+let creating = false
+async function submitCreate(form) {
+  if (creating) return
+  creating = true
+  try {
+    await createAndLog(form)
+  } finally {
+    creating = false
+  }
+}
+
+async function createAndLog(form) {
+  const est = form.estimate.value.trim() ? parseDuration(form.estimate.value) : 0
+  const logged = form.logged.value.trim() ? parseDuration(form.logged.value) : 0 // empty = create the task only
+  if (Number.isNaN(est) || est < 0) return showCreateError(form, `Estimate không hợp lệ: ${form.estimate.value}`)
+  if (Number.isNaN(logged) || logged < 0) return showCreateError(form, `Số giờ log không hợp lệ: ${form.logged.value}`)
+  const parentKey = form.parent.value.trim().toUpperCase()
+  if (!parentKey) return showCreateError(form, 'Phải chọn parent.')
+  let parent
+  try {
+    parent = await api(`/rest/api/2/issue/${encodeURIComponent(parentKey)}?fields=issuetype,project,summary`)
+  } catch {
+    return showCreateError(form, `Parent ${parentKey} không tồn tại hoặc bạn không có quyền xem.`)
+  }
+  if (parent.fields.issuetype?.subtask) return showCreateError(form, `${parentKey} là sub-task, không làm parent được.`)
+  if (parent.fields.project?.key !== form.project.value) return showCreateError(form, `${parentKey} không thuộc project ${form.project.value}.`)
+  const fields = {
+    project: { key: form.project.value },
+    issuetype: { id: form.type.value },
+    summary: form.summary.value.trim(),
+    duedate: form.due.value,
+    reporter: { name: me.name },
+    assignee: { name: me.name },
+    parent: { key: parentKey },
+    ...(est && { timetracking: { originalEstimate: `${est / 60}m` } }),
+  }
+  const btn = form.querySelector('.primary')
+  btn.disabled = true
+  btn.textContent = 'Đang tạo...'
+  let key
+  try {
+    key = (await api('/rest/api/2/issue', { method: 'POST', body: { fields } })).key
+    if (logged)
+      await api(`/rest/api/2/issue/${encodeURIComponent(key)}/worklog`, {
+        method: 'POST',
+        body: { started: `${form.day.value}T09:00:00.000${tzOffset()}`, timeSpentSeconds: logged },
+      })
+  } catch (e) {
+    syncCreateBtn(form)
+    return showCreateError(form, key ? `Đã tạo ${key} nhưng log work lỗi: ${e.message}` : `Không tạo được task: ${e.message}`)
+  }
+  $('#create-dlg').close()
+  perfOpen = logged ? form.day.value : ''
+  set('#perf', loadingBox)
+  const g = gen
+  loadPerf(() => g === gen)
+  refresh() // new task also shows in the sections
 }
 
 // Drag a worklog chip onto another day: same time of day and offset, new date (after confirm).
@@ -594,6 +759,30 @@ function showDashboard(user, err) {
     <section><h2>Sprint <select id="sprint-pick" aria-label="Sprint"><option value="">Sprint đang active</option></select></h2><div class="body" id="sprint">${loadingBox}</div></section>
     ${SECTIONS.map(([t, jql], k) => `<section id="s${k}"><h2>${esc(t)}<a href="${esc(jqlLink(jql))}" target="_blank" rel="noopener">Mở trong Jira ↗</a></h2><div class="body" id="b${k}">${loadingBox}</div></section>`).join('')}
     <footer></footer>
+    <dialog id="create-dlg"><form class="dlg" novalidate>
+      <h3><span id="cd-title">Tạo task & log work</span> <span class="muted" id="cd-day"></span></h3>
+      <div class="row2">
+        <label><span class="label">Project</span><select name="project"></select></label>
+        <label><span class="label">Loại</span><input type="hidden" name="type"><span class="fixed" id="cd-type">Sub-task</span></label>
+      </div>
+      <label><span class="label">Parent * <span class="muted" id="cd-parents"></span></span><input name="parent" list="parents" required placeholder="Chọn story / task cha, VD: IVIEC2024-37007" autocomplete="off"></label>
+      <datalist id="parents"></datalist>
+      <div class="parent-info" id="cd-parent" aria-live="polite"></div>
+      <label><span class="label">Summary</span><input name="summary" required autocomplete="off"></label>
+      <div class="row2">
+        <label><span class="label">Estimate</span><input name="estimate" placeholder="8h"></label>
+        <label><span class="label">Log work</span><input name="logged" placeholder="Để trống = chỉ tạo task"></label>
+      </div>
+      <div class="row2">
+        <label><span class="label">Ngày log</span><input type="date" name="day" required></label>
+        <label><span class="label">Due date</span><input type="date" name="due" required></label>
+      </div>
+      <p class="error" role="alert" hidden></p>
+      <div class="row">
+        <button type="button" data-close>Huỷ</button>
+        <button class="primary" type="submit" disabled>Tạo & log work</button>
+      </div>
+    </form></dialog>
   </main>`
   $('#refresh').onclick = refresh
   $('#auto').onchange = (e) => (autoMs = Number(e.target.value))
@@ -659,7 +848,24 @@ function showDashboard(user, err) {
     dragged = null
     clearDrop()
   }
+  const dlgForm = $('#create-dlg form')
+  dlgForm.oninput = (e) => {
+    syncCreateBtn(dlgForm)
+    if (e.target === dlgForm.parent) showParent(dlgForm, false)
+  }
+  dlgForm.parent.onchange = () => showParent(dlgForm, true)
+  dlgForm.day.onchange = () => dlgForm.day.value && applyDayDefaults(dlgForm, dlgForm.day.value)
+  dlgForm.project.onchange = () => loadCreateMeta(dlgForm).catch((err) => showCreateError(dlgForm, err.message))
+  dlgForm.querySelector('[data-close]').onclick = () => $('#create-dlg').close()
+  dlgForm.onsubmit = (e) => {
+    e.preventDefault()
+    if (!dlgForm.reportValidity()) return
+    submitCreate(dlgForm)
+  }
   $('#perf-sec').onclick = (e) => {
+    const add = e.target.closest('[data-add]')
+    if (add) return openCreate(add.dataset.add)
+    if (e.target.closest('[data-create]')) return openCreate(ymd(Date.now()), false)
     const b = e.target.closest('[data-week],[data-month],[data-view]')
     if (!b) return
     const reload = () => {
