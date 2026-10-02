@@ -211,3 +211,14 @@ button.mini:hover { background: #ea580c; border-color: #ea580c; color: #fff; }
 .pre { white-space: pre-wrap; }
 .dd-desc { max-height: 240px; overflow-y: auto; padding: 8px; margin-top: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
 details summary { cursor: pointer; color: var(--link); }
+
+/* Editable worklog in the detail popup */
+.dd-wl label { display: grid; gap: 4px; }
+.dd-wl input, .dd-wl textarea { border: 1px solid var(--ctl); background: var(--card); color: var(--strong); border-radius: 6px; padding: 6px 8px; font: inherit; }
+.dd-wl textarea { resize: vertical; }
+.dd-wl input:focus, .dd-wl textarea:focus { outline: none; border-color: #f97316; }
+.row3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+.dd-wl .row { align-items: center; justify-content: space-between; }
+.dd-wl .row .primary { flex: 0 0 auto; }
+.wl-note { font-size: 11px; }
+@media (max-width: 480px) { .row3 { grid-template-columns: 1fr; } }

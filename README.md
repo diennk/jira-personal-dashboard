@@ -69,7 +69,7 @@ Click một tuần / ngày để xem chi tiết từng issue; dòng cuối là t
 
 **Calendar** — lịch tháng (T2 → CN), ‹ › đổi tháng, *Tháng này* quay về hiện tại:
 
-- Mỗi ô ngày tô màu theo giờ logged (< 4h, 4–8h, ≥ 8h), hiện từng worklog (số issue, summary, giờ), ✓ số task hoàn thành, + số task nhận mới. Click ô để xem danh sách issue bên dưới; **click một worklog (hoặc task trên sidebar) để mở popup chi tiết**: issue, parent, assignee / reporter, due date, estimate / đã log / còn lại, mô tả, và thông tin chính worklog đó (ngày, giờ bắt đầu, số giờ, người log, ghi chú).
+- Mỗi ô ngày tô màu theo giờ logged (< 4h, 4–8h, ≥ 8h), hiện từng worklog (số issue, summary, giờ), ✓ số task hoàn thành, + số task nhận mới. Click ô để xem danh sách issue bên dưới; **click một worklog (hoặc task trên sidebar) để mở popup chi tiết**: issue, parent, assignee / reporter, due date, estimate / đã log / còn lại, mô tả, và thông tin chính worklog đó (ngày, giờ bắt đầu, số giờ, người log, ghi chú). **Worklog của chính bạn sửa được ngay trong popup** (ngày, giờ bắt đầu, số giờ, ghi chú → *Lưu worklog*; đổi số giờ thì remaining estimate tự điều chỉnh); worklog của người khác chỉ xem.
 - T7, CN: cột hẹp, tô cam. Ngày thường (đến hôm nay) không có worklog và không có task nào: tô đỏ nhạt, ghi *⚠ Chưa log*.
 - **Kéo worklog sang ngày khác** để đổi ngày log trên Jira (giữ giờ bắt đầu và số giờ, không đổi remaining estimate). Có hộp xác nhận trước khi ghi.
 - **Sidebar "Chưa logwork"** bên trái: task giao cho bạn chưa có worklog nào (chưa xong, hoặc đã xong trong 30 ngày qua). **Kéo task vào ô ngày** để log work: nhập số giờ (mặc định = remaining estimate; vd `8h`, `1.5h`, `1,5`, `30m`), worklog bắt đầu 9:00 ngày đó và trừ remaining estimate như Jira.
@@ -87,6 +87,7 @@ Chỉ những thao tác sau, đều do người dùng chủ động:
 | Thao tác | API |
 |---|---|
 | Kéo worklog sang ngày khác (sau khi xác nhận) | `PUT /rest/api/2/issue/{key}/worklog/{id}?adjustEstimate=leave` |
+| Sửa worklog trong popup chi tiết (nút Lưu) | `PUT /rest/api/2/issue/{key}/worklog/{id}?adjustEstimate=auto` |
 | Kéo task từ sidebar vào ngày | `POST /rest/api/2/issue/{key}/worklog` |
 | Popup tạo task | `POST /rest/api/2/issue` (+ `POST .../worklog` nếu có log work) |
 

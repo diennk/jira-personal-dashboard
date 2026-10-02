@@ -444,12 +444,7 @@ async function openDetail(key, worklogId) {
       '#dd-body',
       `<h3>${link(key)} <span class="badge st-${esc(f.status?.statusCategory?.key)}">${esc(f.status?.name)}</span></h3>
       <p class="dd-sum">${esc(f.summary)}</p>
-      ${wl ? `<div class="dd-wl"><b>Worklog này</b>
-        <dl>${row('Ngày', esc(new Date(wl.started).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })))}
-        ${row('Bắt đầu', esc(new Date(wl.started).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })))}
-        ${row('Thời gian', esc(hrs(wl.timeSpentSeconds)))}
-        ${row('Người log', esc(wl.author?.displayName))}
-        ${row('Ghi chú', wl.comment ? `<span class="pre">${esc(wl.comment)}</span>` : '<span class="muted">—</span>')}</dl></div>` : ''}
+      ${wl ? worklogBox(wl) : ''}
       <dl>
         ${row('Loại', esc(f.issuetype?.name))}
         ${row('Parent', f.parent ? `${link(f.parent.key)} ${esc(f.parent.fields?.summary)}` : '')}
@@ -464,8 +459,69 @@ async function openDetail(key, worklogId) {
       </dl>
       ${f.description ? `<details><summary>Mô tả</summary><div class="pre dd-desc">${esc(f.description)}</div></details>` : ''}`,
     )
+    if (wl) wireWorklogForm(key, wl)
   } catch (e) {
     if (n === detailReq) set('#dd-body', errBox(e))
+  }
+}
+
+// Worklog box: editable form for my own worklog, read-only for others'.
+// Date/time are edited in the worklog's own offset (as stored), like drag & drop.
+function worklogBox(wl) {
+  const mine = wl.author?.name === me?.name
+  const date = wl.started.slice(0, 10)
+  const time = wl.started.slice(11, 16)
+  const dayLabel = new Date(`${date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+  if (!mine)
+    return `<div class="dd-wl"><b>Worklog này <span class="muted">· của ${esc(wl.author?.displayName)}, chỉ xem</span></b>
+      <dl><dt>Ngày</dt><dd>${esc(dayLabel)}</dd><dt>Bắt đầu</dt><dd>${esc(time)}</dd><dt>Thời gian</dt><dd>${esc(hrs(wl.timeSpentSeconds))}</dd>
+      <dt>Ghi chú</dt><dd>${wl.comment ? `<span class="pre">${esc(wl.comment)}</span>` : '<span class="muted">—</span>'}</dd></dl></div>`
+  return `<form class="dd-wl" id="wl-form" novalidate><b>Worklog này <span class="muted">· ${esc(dayLabel)}</span></b>
+    <div class="row3">
+      <label><span class="label">Ngày</span><input type="date" name="date" required value="${esc(date)}"></label>
+      <label><span class="label">Bắt đầu</span><input type="time" name="time" required value="${esc(time)}"></label>
+      <label><span class="label">Thời gian</span><input name="spent" required value="${esc(hrs(wl.timeSpentSeconds))}" placeholder="8h, 1.5h, 30m"></label>
+    </div>
+    <label><span class="label">Ghi chú</span><textarea name="comment" rows="2" placeholder="Không bắt buộc">${esc(wl.comment ?? '')}</textarea></label>
+    <p class="error" role="alert" hidden></p>
+    <div class="row"><span class="muted wl-note">Đổi số giờ sẽ tự điều chỉnh remaining estimate.</span><button class="primary" type="submit" disabled>Lưu worklog</button></div>
+  </form>`
+}
+
+function wireWorklogForm(key, wl) {
+  const form = $('#wl-form')
+  if (!form) return
+  const btn = form.querySelector('.primary')
+  const initial = new FormData(form)
+  const changed = () => [...new FormData(form)].some(([k, v]) => v !== initial.get(k))
+  form.oninput = () => (btn.disabled = !changed())
+  form.onsubmit = async (e) => {
+    e.preventDefault()
+    if (btn.disabled || !form.reportValidity()) return
+    const err = form.querySelector('.error')
+    const secs = parseDuration(form.spent.value)
+    if (!(secs > 0)) {
+      err.textContent = `Thời gian không hợp lệ: ${form.spent.value}`
+      return (err.hidden = false)
+    }
+    btn.disabled = true
+    btn.textContent = 'Đang lưu...'
+    try {
+      await api(`/rest/api/2/issue/${encodeURIComponent(key)}/worklog/${encodeURIComponent(wl.id)}?adjustEstimate=auto`, {
+        method: 'PUT',
+        body: { started: `${form.date.value}T${form.time.value}:00.000${wl.started.slice(23)}`, timeSpentSeconds: secs, comment: form.comment.value },
+      })
+    } catch (ex) {
+      err.textContent = `Không lưu được: ${ex.message}`
+      err.hidden = false
+      btn.textContent = 'Lưu worklog'
+      btn.disabled = false
+      return
+    }
+    perfOpen = form.date.value
+    const g = gen
+    loadPerf(() => g === gen) // calendar reflects the new date / hours
+    openDetail(key, wl.id) // re-read from Jira
   }
 }
 
