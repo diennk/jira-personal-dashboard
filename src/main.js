@@ -91,27 +91,52 @@ function table(all) {
 const parseSprint = (s) =>
   typeof s === 'string' ? Object.fromEntries([...s.matchAll(/(\w+)=([^,\]]*)/g)].map((m) => [m[1], m[2]])) : s
 
+let sprintField // custom field id, resolved once (null = no Jira Software)
+let pickedSprint = '' // sprint id; '' = active sprints
+let sprintList = [] // sprints the viewed member has issues in
+const sprintState = (sp) => String(sp.state).toUpperCase()
+const STATE_RANK = { ACTIVE: 0, FUTURE: 1, CLOSED: 2 }
+
 async function sprints() {
-  const sf = (await api('/rest/api/2/field')).find((f) => f.schema?.custom === 'com.pyxis.greenhopper.jira:gh-sprint')
+  if (sprintField === undefined)
+    sprintField = (await api('/rest/api/2/field')).find((f) => f.schema?.custom === 'com.pyxis.greenhopper.jira:gh-sprint')?.id ?? null
+  const sf = sprintField
   if (!sf) return { issues: [], render: () => '<p class="empty">Không thấy field Sprint (Jira Software?).</p>' }
-  const res = await search('assignee = currentUser() AND sprint in openSprints() ORDER BY Rank', 200, ',' + sf.id)
+  const sprintsOf = (i) => [].concat(i.fields[sf] ?? []).map(parseSprint)
+  const picked = pickedSprint
+  const [res, hist] = await Promise.all([
+    search(`assignee = currentUser() AND ${picked ? `sprint = ${Number(picked)}` : 'sprint in openSprints()'} ORDER BY Rank`, 200, ',' + sf),
+    // ponytail: list built from the 200 latest-updated issues; older sprints drop off
+    search('assignee = currentUser() AND sprint is not EMPTY ORDER BY updated DESC', 200, ',' + sf),
+  ])
+  const known = new Map()
+  for (const i of [...hist.issues, ...res.issues]) for (const sp of sprintsOf(i)) known.set(String(sp.id), sp)
+  sprintList = [...known.values()].sort(
+    (x, y) => (STATE_RANK[sprintState(x)] ?? 3) - (STATE_RANK[sprintState(y)] ?? 3) || (Date.parse(y.startDate) || 0) - (Date.parse(x.startDate) || 0),
+  )
+
   const groups = new Map()
   for (const i of res.issues)
-    for (const sp of [].concat(i.fields[sf.id] ?? []).map(parseSprint)) {
-      if (String(sp.state).toUpperCase() !== 'ACTIVE') continue
+    for (const sp of sprintsOf(i)) {
+      if (picked ? String(sp.id) !== picked : sprintState(sp) !== 'ACTIVE') continue
       if (!groups.has(String(sp.id))) groups.set(String(sp.id), { ...sp, issues: [] })
       groups.get(String(sp.id)).issues.push(i)
     }
-  if (!groups.size) return { issues: [], render: () => '<p class="empty">Không có sprint active.</p>' }
+  if (!groups.size)
+    return { issues: [], render: () => `<p class="empty">${picked ? 'Không có issue trong sprint này.' : 'Không có sprint active.'}</p>` }
   const render = () => [...groups.values()]
     .map((g) => {
       const done = g.issues.filter((i) => i.fields.status?.statusCategory?.key === 'done').length
       const pct = Math.round((done / g.issues.length) * 100)
       const end = Date.parse(g.endDate)
-      const left = isNaN(end) ? '' : ` · Còn ${Math.max(0, Math.ceil((end - Date.now()) / 864e5))} ngày (${fmtDate(end)})`
+      const start = Date.parse(g.startDate)
+      const when =
+        sprintState(g) === 'CLOSED' ? (isNaN(end) ? ' · Đã đóng' : ` · Đã đóng (${fmtDate(end)})`)
+        : sprintState(g) === 'FUTURE' ? (isNaN(start) ? ' · Sắp tới' : ` · Bắt đầu ${fmtDate(start)}`)
+        : isNaN(end) ? '' : ` · Còn ${Math.max(0, Math.ceil((end - Date.now()) / 864e5))} ngày (${fmtDate(end)})`
       return `<div class="sprint">
         <div class="sprint-head">
-          <div><b>${esc(g.name)}</b> <span class="muted">${esc(left)} · ${done}/${g.issues.length} xong (${pct}%)</span></div>
+          <div><b>${esc(g.name)}</b> <span class="muted">${esc(when)} · ${done}/${g.issues.length} xong (${pct}%)</span></div>
           <div class="bar"><div style="width:${pct}%"></div></div>
         </div>
         ${table(g.issues)}
@@ -119,6 +144,27 @@ async function sprints() {
     })
     .join('')
   return { issues: res.issues, render }
+}
+
+function fillSprintPick() {
+  const opts = sprintList.map((sp) => [String(sp.id), `${sp.name} (${sprintState(sp).toLowerCase()})`])
+  if (pickedSprint && !opts.some(([v]) => v === pickedSprint)) opts.push([pickedSprint, `Sprint #${pickedSprint}`])
+  set('#sprint-pick', [['', 'Sprint đang active'], ...opts].map(([v, l]) => `<option value="${esc(v)}" ${v === pickedSprint ? 'selected' : ''}>${esc(l)}</option>`).join(''))
+}
+
+// Only the latest request writes the section (auto refresh and a pick change can overlap).
+let sprintReq = 0
+function loadSprint(live) {
+  const n = ++sprintReq
+  const ok = () => n === sprintReq && live()
+  return sprints().then(
+    (v) => {
+      if (!ok()) return
+      show('#sprint', v)
+      fillSprintPick()
+    },
+    (e) => ok() && show('#sprint', { issues: [], render: () => errBox(e) }),
+  )
 }
 
 const errBox = (e) => `<p class="error">${esc(e.message)}</p>`
@@ -183,10 +229,7 @@ async function refresh() {
   $('#refresh').disabled = true
   set('#next', '')
   await Promise.allSettled([
-    sprints().then(
-      (v) => live() && show('#sprint', v),
-      (e) => live() && show('#sprint', { issues: [], render: () => errBox(e) }),
-    ),
+    loadSprint(live),
     ...SECTIONS.map(([, jql], k) =>
       search(jql).then(
         (r) => {
@@ -254,7 +297,7 @@ function showDashboard(user, err) {
       <select id="f-type" data-f="type" aria-label="Type"><option value="">Type: All</option></select>
       <button id="f-clear">Clear</button>
     </div>
-    <section><h2>Sprint hiện tại</h2><div class="body" id="sprint">${loadingBox}</div></section>
+    <section><h2>Sprint <select id="sprint-pick" aria-label="Sprint"><option value="">Sprint đang active</option></select></h2><div class="body" id="sprint">${loadingBox}</div></section>
     ${SECTIONS.map(([t, jql], k) => `<section id="s${k}"><h2>${esc(t)}<a href="${esc(jqlLink(jql))}" target="_blank" rel="noopener">Mở trong Jira ↗</a></h2><div class="body" id="b${k}">${loadingBox}</div></section>`).join('')}
     <footer></footer>
   </main>`
@@ -278,7 +321,14 @@ function showDashboard(user, err) {
     const next = u && u.name !== me?.name ? u : null
     if ((next?.name ?? null) === (subject?.name ?? null)) return
     subject = next
+    pickedSprint = '' // sprints differ per member
     showDashboard(me)
+  }
+  $('#sprint-pick').onchange = (e) => {
+    pickedSprint = e.target.value
+    set('#sprint', loadingBox)
+    const g = gen
+    loadSprint(() => g === gen)
   }
   views.clear()
   if (!ENV_MODE) $('#settings').onclick = () => showForm('', true)

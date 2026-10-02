@@ -85,3 +85,4 @@ button:disabled { opacity: .5; cursor: default; }
 .filters input { flex: 1; min-width: 16rem; border: 1px solid var(--ctl); background: var(--card); color: var(--strong); border-radius: 6px; padding: 6px 12px; font: inherit; }
 .filters select { max-width: 12rem; }
 #member { width: 14rem; border: 1px solid var(--ctl); background: var(--card); color: var(--strong); border-radius: 6px; padding: 6px 8px; font: inherit; }
+#sprint-pick { font-size: 12px; font-weight: 400; max-width: 22rem; }
