@@ -44,6 +44,7 @@ Có 2 cách, chọn một:
 - **Sections**: Đang làm, To do, Bugs, Quá hạn, Đã report, Đang watch, Xong 14 ngày qua. Mỗi section có link *Mở trong Jira* với JQL tương ứng.
 - **Member** (header): gõ để tìm thành viên (assignable users của các project đang hiển thị, bản thân ở đầu danh sách). Chọn một người sẽ tải lại toàn bộ dashboard cho người đó (thay `currentUser()` trong JQL bằng username của họ). Xoá ô để quay về bản thân.
 - **Search / filter**: lọc theo key/summary, status category, project, type (lọc phía client trên dữ liệu đã tải).
+- **Performance**: theo tuần (4 / 8 / 12 tuần) hoặc theo ngày (7 / 14 / 30 ngày, cuối tuần in nhạt) của member đang xem — số task nhận mới, hoàn thành, tổng estimate & spent của task xong, giờ logged (worklog của chính member) và số issue có log. Click một tuần / ngày để xem chi tiết từng issue. Nút **List / Calendar** chuyển sang dạng lịch tháng: mỗi ô là một ngày, màu đậm dần theo giờ logged (< 4h, 4–8h, ≥ 8h), kèm ✓ số task hoàn thành và + số task nhận mới; ‹ › để đổi tháng, click ngày để xem issue. Mỗi ô hiện từng worklog của member (số issue, summary, giờ); **kéo thả worklog sang ngày khác** để đổi ngày log trên Jira (giữ nguyên giờ bắt đầu và số giờ, không đổi remaining estimate), có hộp xác nhận trước khi ghi. Sidebar **Chưa logwork** bên trái lịch liệt kê task được giao chưa có worklog nào (chưa xong, hoặc đã xong trong 30 ngày qua); kéo task vào ô ngày để log work: nhập số giờ (mặc định = remaining estimate, vd 8h, 1.5h, 30m), worklog bắt đầu 9:00 ngày đó và trừ remaining estimate như Jira. Chỉ dùng được khi xem dashboard của chính mình. Kéo thả cần chuột (không hỗ trợ cảm ứng). "Hoàn thành" tính theo lần đổi status cuối cùng (workflow không set Resolution).
 - **Auto refresh**: Off / 10s / 30s / 60s / 5m, có đếm ngược.
 
 ## Tuỳ biến
@@ -56,6 +57,7 @@ Các query dùng `statusCategory` thay vì `resolution` vì workflow có thể k
 
 - Chỉ chạy qua `yarn dev` hoặc `vite preview` (cần proxy). Build tĩnh deploy lên host khác sẽ bị CORS.
 - Mỗi section tối đa 50 issue, sprint tối đa 200.
+- Proxy chỉ chuyển tiếp GET, POST tạo worklog và PUT sửa worklog; mọi request ghi khác bị chặn (405).
 - Chỉ hỗ trợ Jira Server / Data Center (auth `Bearer <PAT>`). Jira Cloud dùng email + API token, chưa hỗ trợ.
 
 ## Cấu trúc

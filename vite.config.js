@@ -20,10 +20,32 @@ export default defineConfig(({ mode }) => {
       res.statusCode = 401
       return res.end('Jira URL / token not configured')
     }
+    // Reads, plus the only two writes the app makes: add a worklog (POST) and move one (PUT).
+    const path = req.url.split('?')[0]
+    const allowed =
+      req.method === 'GET' ||
+      (req.method === 'POST' && /^\/rest\/api\/2\/issue\/[^/]+\/worklog$/.test(path)) ||
+      (req.method === 'PUT' && /^\/rest\/api\/2\/issue\/[^/]+\/worklog\/\d+$/.test(path))
+    if (!allowed) {
+      res.statusCode = 405
+      return res.end('Method not allowed')
+    }
     try {
+      const body =
+        req.method !== 'GET'
+          ? await new Promise((ok, fail) => {
+              const chunks = []
+              req.on('data', (c) => chunks.push(c)).on('end', () => ok(Buffer.concat(chunks))).on('error', fail)
+            })
+          : undefined
       const r = await fetch(base + req.url, {
         method: req.method,
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          ...(body && { 'Content-Type': 'application/json', 'X-Atlassian-Token': 'no-check' }),
+        },
+        body,
       })
       res.statusCode = r.status
       res.setHeader('Content-Type', r.headers.get('content-type') ?? 'text/plain')
