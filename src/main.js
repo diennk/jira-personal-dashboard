@@ -209,7 +209,7 @@ const dayOf = (d) => {
 
 let perfView = 'cal' // 'cal' (default) | 'list'
 let perfBacklog = [] // calendar sidebar: assigned tasks nobody has logged time on yet
-const BACKLOG_JQL = 'assignee = currentUser() AND timespent is EMPTY AND (statusCategory != Done OR updated >= -30d) ORDER BY updated DESC'
+const BACKLOG_JQL = 'assignee = currentUser() AND timespent is EMPTY ORDER BY updated DESC' // any status, incl. resolved
 let perfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1) // calendar month (1st day)
 
 // Periods to load: list = range dropdown; calendar = full Mon–Sun weeks covering perfMonth.
