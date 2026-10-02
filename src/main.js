@@ -421,6 +421,54 @@ async function logWork({ issue, est }, day) {
   loadPerf(() => g === gen)
 }
 
+// ---- Click a worklog chip / sidebar task: read-only detail popup ----
+let detailReq = 0
+async function openDetail(key, worklogId) {
+  const dlg = $('#detail-dlg')
+  const n = ++detailReq
+  set('#dd-body', loadingBox)
+  dlg.showModal()
+  try {
+    const f = (
+      await api(
+        `/rest/api/2/issue/${encodeURIComponent(key)}?fields=summary,status,issuetype,priority,parent,assignee,reporter,duedate,created,updated,timetracking,description,project`,
+      )
+    ).fields
+    const wl = worklogId ? await api(`/rest/api/2/issue/${encodeURIComponent(key)}/worklog/${encodeURIComponent(worklogId)}`) : null
+    if (n !== detailReq) return
+    const t = f.timetracking ?? {}
+    const row = (label, html) => (html ? `<dt>${label}</dt><dd>${html}</dd>` : '')
+    const when = (d) => (d ? new Date(d).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '')
+    const link = (k, text) => `<a href="${esc(cfg.url)}/browse/${esc(k)}" target="_blank" rel="noopener">${esc(text ?? k)}</a>`
+    set(
+      '#dd-body',
+      `<h3>${link(key)} <span class="badge st-${esc(f.status?.statusCategory?.key)}">${esc(f.status?.name)}</span></h3>
+      <p class="dd-sum">${esc(f.summary)}</p>
+      ${wl ? `<div class="dd-wl"><b>Worklog này</b>
+        <dl>${row('Ngày', esc(new Date(wl.started).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })))}
+        ${row('Bắt đầu', esc(new Date(wl.started).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })))}
+        ${row('Thời gian', esc(hrs(wl.timeSpentSeconds)))}
+        ${row('Người log', esc(wl.author?.displayName))}
+        ${row('Ghi chú', wl.comment ? `<span class="pre">${esc(wl.comment)}</span>` : '<span class="muted">—</span>')}</dl></div>` : ''}
+      <dl>
+        ${row('Loại', esc(f.issuetype?.name))}
+        ${row('Parent', f.parent ? `${link(f.parent.key)} ${esc(f.parent.fields?.summary)}` : '')}
+        ${row('Priority', esc(f.priority?.name))}
+        ${row('Assignee', esc(f.assignee?.displayName ?? 'Unassigned'))}
+        ${row('Reporter', esc(f.reporter?.displayName))}
+        ${row('Due date', f.duedate ? `<span class="${f.duedate < ymd(Date.now()) && f.status?.statusCategory?.key !== 'done' ? 'overdue' : ''}">${fmtDate(f.duedate)}</span>` : '')}
+        ${row('Estimate', hrs(t.originalEstimateSeconds))}
+        ${row('Đã log', hrs(t.timeSpentSeconds))}
+        ${row('Còn lại', t.remainingEstimateSeconds === 0 ? '0h' : hrs(t.remainingEstimateSeconds))}
+        ${row('Tạo / cập nhật', `${esc(when(f.created))} · ${esc(when(f.updated))}`)}
+      </dl>
+      ${f.description ? `<details><summary>Mô tả</summary><div class="pre dd-desc">${esc(f.description)}</div></details>` : ''}`,
+    )
+  } catch (e) {
+    if (n === detailReq) set('#dd-body', errBox(e))
+  }
+}
+
 // ---- "+" in a day cell: create a task assigned to me and log work on it that day ----
 const metaCache = new Map() // project -> createmeta issue types
 const parentInfo = new Map() // issue key -> { summary, status, issuetype } (null = not found)
@@ -759,6 +807,10 @@ function showDashboard(user, err) {
     <section><h2>Sprint <select id="sprint-pick" aria-label="Sprint"><option value="">Sprint đang active</option></select></h2><div class="body" id="sprint">${loadingBox}</div></section>
     ${SECTIONS.map(([t, jql], k) => `<section id="s${k}"><h2>${esc(t)}<a href="${esc(jqlLink(jql))}" target="_blank" rel="noopener">Mở trong Jira ↗</a></h2><div class="body" id="b${k}">${loadingBox}</div></section>`).join('')}
     <footer></footer>
+    <dialog id="detail-dlg" aria-label="Chi tiết task"><div class="dlg">
+      <div id="dd-body"></div>
+      <div class="row"><button type="button" data-close-detail>Đóng</button></div>
+    </div></dialog>
     <dialog id="create-dlg"><form class="dlg" novalidate>
       <h3><span id="cd-title">Tạo task & log work</span> <span class="muted" id="cd-day"></span></h3>
       <div class="row2">
@@ -848,6 +900,9 @@ function showDashboard(user, err) {
     dragged = null
     clearDrop()
   }
+  $('#detail-dlg [data-close-detail]').onclick = () => $('#detail-dlg').close()
+  // click on the backdrop closes it too
+  $('#detail-dlg').onclick = (e) => e.target === e.currentTarget && e.currentTarget.close()
   const dlgForm = $('#create-dlg form')
   dlgForm.oninput = (e) => {
     syncCreateBtn(dlgForm)
@@ -865,6 +920,8 @@ function showDashboard(user, err) {
   $('#perf-sec').onclick = (e) => {
     const add = e.target.closest('[data-add]')
     if (add) return openCreate(add.dataset.add)
+    const item = !e.target.closest('a') && e.target.closest('.chip, .todo')
+    if (item) return openDetail(item.dataset.issue, item.dataset.wl)
     if (e.target.closest('[data-create]')) return openCreate(ymd(Date.now()), false)
     const b = e.target.closest('[data-week],[data-month],[data-view]')
     if (!b) return

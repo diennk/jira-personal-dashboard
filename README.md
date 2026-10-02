@@ -1,6 +1,6 @@
 # Jira Personal Dashboard
 
-Dashboard cá nhân cho Jira Server / Data Center: tasks, bugs, sprint hiện tại, issue quá hạn, issue mình report / watch, issue đã xong gần đây.
+Dashboard cá nhân cho Jira Server / Data Center: tasks, bugs, sprint, issue quá hạn, issue mình report / watch, performance theo tuần / ngày và lịch worklog có kéo thả để log work.
 
 Vite thuần + vanilla JS, không có backend riêng. Vite dev server đóng vai trò proxy tới Jira (Jira Server/DC không trả CORS header nên trình duyệt không gọi thẳng được).
 
@@ -39,31 +39,77 @@ Có 2 cách, chọn một:
 
 ## Tính năng
 
+### Header
+
+- **Member**: gõ để tìm thành viên (assignable users của các project đang hiển thị, bản thân ở đầu danh sách). Chọn một người sẽ tải lại toàn bộ dashboard cho người đó (thay `currentUser()` trong JQL bằng username của họ). Xoá ô để quay về bản thân.
+- **Auto refresh**: Off / 10s / 30s / 60s / 5m, có đếm ngược. Dữ liệu cũ vẫn hiển thị trong lúc tải lại.
+
+### Summary cards & sections
+
 - **Summary cards**: số issue của từng nhóm, click để nhảy tới section.
+- **Sections**: Đang làm, To do, Bugs, Quá hạn, Đã report, Đang watch, Xong 14 ngày qua. Mỗi section có link *Mở trong Jira* với JQL tương ứng; bảng có cột Assignee, due date quá hạn tô đỏ.
+- **Search / filter**: lọc theo key / summary, status category, project, type (lọc phía client trên dữ liệu đã tải, giữ nguyên qua auto refresh).
 - **Sprint**: mặc định hiện các sprint đang active; dropdown ở tiêu đề section cho chọn sprint khác (active / future / closed) mà member đang xem có issue, kèm progress và ngày bắt đầu / kết thúc. Danh sách lấy từ 200 issue cập nhật gần nhất của member.
-- **Sections**: Đang làm, To do, Bugs, Quá hạn, Đã report, Đang watch, Xong 14 ngày qua. Mỗi section có link *Mở trong Jira* với JQL tương ứng.
-- **Member** (header): gõ để tìm thành viên (assignable users của các project đang hiển thị, bản thân ở đầu danh sách). Chọn một người sẽ tải lại toàn bộ dashboard cho người đó (thay `currentUser()` trong JQL bằng username của họ). Xoá ô để quay về bản thân.
-- **Search / filter**: lọc theo key/summary, status category, project, type (lọc phía client trên dữ liệu đã tải).
-- **Performance**: theo tuần (4 / 8 / 12 tuần) hoặc theo ngày (7 / 14 / 30 ngày, cuối tuần in nhạt) của member đang xem — số task nhận mới, hoàn thành, tổng estimate & spent của task xong, giờ logged (worklog của chính member) và số issue có log. Click một tuần / ngày để xem chi tiết từng issue. Nút **List / Calendar** chuyển sang dạng lịch tháng: mỗi ô là một ngày, màu đậm dần theo giờ logged (< 4h, 4–8h, ≥ 8h), kèm ✓ số task hoàn thành và + số task nhận mới; ‹ › để đổi tháng, click ngày để xem issue. Mỗi ô hiện từng worklog của member (số issue, summary, giờ); **kéo thả worklog sang ngày khác** để đổi ngày log trên Jira (giữ nguyên giờ bắt đầu và số giờ, không đổi remaining estimate), có hộp xác nhận trước khi ghi. Sidebar **Chưa logwork** bên trái lịch liệt kê task được giao chưa có worklog nào (chưa xong, hoặc đã xong trong 30 ngày qua); kéo task vào ô ngày để log work: nhập số giờ (mặc định = remaining estimate, vd 8h, 1.5h, 30m), worklog bắt đầu 9:00 ngày đó và trừ remaining estimate như Jira. Nút **+** ở góc dưới phải mỗi ô ngày mở popup tạo **Sub-task** (bắt buộc chọn parent, gợi ý tất cả issue không phải sub-task trong các sprint active của bạn (và sprint đang chọn ở section Sprint), parent dùng gần đây xếp đầu; parent phải tồn tại, không phải sub-task và cùng project) giao cho chính mình, kèm log work ngày đó — mặc định estimate và log = 8h trừ số giờ đã log trong ngày, due date = ngày đó; để trống ô Log work thì chỉ tạo task. Nút **+ Tạo task** trên sidebar mở cùng popup nhưng chỉ tạo task (estimate 8h, due date hôm nay, không log work); task mới hiện trong sidebar để kéo vào ngày sau. Sidebar và nút + chỉ dùng được khi xem dashboard của chính mình. Kéo thả cần chuột (không hỗ trợ cảm ứng). "Hoàn thành" tính theo lần đổi status cuối cùng (workflow không set Resolution).
-- **Auto refresh**: Off / 10s / 30s / 60s / 5m, có đếm ngược.
+
+### Performance
+
+Của member đang xem. Nút **Calendar / List** ở tiêu đề section (mặc định Calendar).
+
+**List** — theo tuần (4 / 8 / 12 tuần) hoặc theo ngày (7 / 14 / 30 ngày):
+
+| Cột | Ý nghĩa |
+|---|---|
+| Nhận mới | issue giao cho member được tạo trong kỳ |
+| Hoàn thành | issue Done có lần đổi status cuối rơi vào kỳ |
+| Estimate / Spent (task xong) | tổng original estimate / time spent của các task hoàn thành trong kỳ |
+| Logged | giờ chính member log trong kỳ, kèm thanh so sánh |
+| Issues có log | số issue member log trong kỳ |
+
+Click một tuần / ngày để xem chi tiết từng issue; dòng cuối là tổng.
+
+**Calendar** — lịch tháng (T2 → CN), ‹ › đổi tháng, *Tháng này* quay về hiện tại:
+
+- Mỗi ô ngày tô màu theo giờ logged (< 4h, 4–8h, ≥ 8h), hiện từng worklog (số issue, summary, giờ), ✓ số task hoàn thành, + số task nhận mới. Click ô để xem danh sách issue bên dưới; **click một worklog (hoặc task trên sidebar) để mở popup chi tiết**: issue, parent, assignee / reporter, due date, estimate / đã log / còn lại, mô tả, và thông tin chính worklog đó (ngày, giờ bắt đầu, số giờ, người log, ghi chú).
+- T7, CN: cột hẹp, tô cam. Ngày thường (đến hôm nay) không có worklog và không có task nào: tô đỏ nhạt, ghi *⚠ Chưa log*.
+- **Kéo worklog sang ngày khác** để đổi ngày log trên Jira (giữ giờ bắt đầu và số giờ, không đổi remaining estimate). Có hộp xác nhận trước khi ghi.
+- **Sidebar "Chưa logwork"** bên trái: task giao cho bạn chưa có worklog nào (chưa xong, hoặc đã xong trong 30 ngày qua). **Kéo task vào ô ngày** để log work: nhập số giờ (mặc định = remaining estimate; vd `8h`, `1.5h`, `1,5`, `30m`), worklog bắt đầu 9:00 ngày đó và trừ remaining estimate như Jira.
+- **Nút + ở góc dưới phải ô ngày**: popup tạo task và log work ngày đó.
+  - Luôn tạo **Sub-task** giao cho bạn (reporter cũng là bạn); **bắt buộc chọn parent**. Gợi ý: tất cả issue không phải sub-task trong các sprint active của bạn (và sprint đang chọn ở section Sprint), parent dùng gần đây xếp đầu. Tiêu đề đầy đủ của parent hiện dưới ô nhập.
+  - Parent phải tồn tại, không phải sub-task và cùng project — kiểm tra trước khi tạo.
+  - Mặc định: estimate và log work = **8h trừ số giờ đã log trong ngày**, due date = ngày đó. Để trống ô Log work thì chỉ tạo task.
+- **Nút "+ Tạo task" trên sidebar**: cùng popup nhưng chỉ tạo task (estimate 8h, due date hôm nay, không log work); task mới hiện trong sidebar để kéo vào ngày sau.
+- Sidebar, nút + và nút Tạo task chỉ dùng được khi xem dashboard của chính mình (worklog luôn được tạo dưới tên người kết nối).
+
+## Dữ liệu app ghi lên Jira
+
+Chỉ những thao tác sau, đều do người dùng chủ động:
+
+| Thao tác | API |
+|---|---|
+| Kéo worklog sang ngày khác (sau khi xác nhận) | `PUT /rest/api/2/issue/{key}/worklog/{id}?adjustEstimate=leave` |
+| Kéo task từ sidebar vào ngày | `POST /rest/api/2/issue/{key}/worklog` |
+| Popup tạo task | `POST /rest/api/2/issue` (+ `POST .../worklog` nếu có log work) |
+
+Proxy chỉ chuyển tiếp GET và đúng các request ghi trên (theo path); mọi request ghi khác bị chặn (405). Request từ origin khác bị chặn (403).
 
 ## Tuỳ biến
 
 Sửa mảng `SECTIONS` trong [src/main.js](src/main.js): mỗi phần tử là `[tiêu đề, JQL, màu card]`. Màu card: `c-blue`, `c-sky`, `c-amber`, `c-red`, `c-green` hoặc `''`.
 
-Các query dùng `statusCategory` thay vì `resolution` vì workflow có thể không set Resolution khi chuyển sang Done. "Xong 14 ngày qua" dùng `updated` làm mốc nên là xấp xỉ.
+Các query dùng `statusCategory` thay vì `resolution` vì workflow không set Resolution khi chuyển sang Done. Vì vậy "Xong 14 ngày qua" dùng `updated` làm mốc, còn "Hoàn thành" trong Performance dùng lần đổi status cuối — cả hai là xấp xỉ.
 
 ## Giới hạn
 
 - Chỉ chạy qua `yarn dev` hoặc `vite preview` (cần proxy). Build tĩnh deploy lên host khác sẽ bị CORS.
-- Mỗi section tối đa 50 issue, sprint tối đa 200.
-- Proxy chỉ chuyển tiếp GET, POST tạo issue / worklog và PUT sửa worklog; mọi request ghi khác bị chặn (405).
+- Mỗi section tối đa 50 issue, sprint tối đa 200, danh sách sprint lấy từ 200 issue gần nhất. Performance / calendar đọc đủ mọi trang kết quả.
+- Ngày của worklog lấy theo timezone của chính worklog, giả định trùng timezone trình duyệt.
+- Kéo thả cần chuột (không hỗ trợ cảm ứng).
 - Chỉ hỗ trợ Jira Server / Data Center (auth `Bearer <PAT>`). Jira Cloud dùng email + API token, chưa hỗ trợ.
 
 ## Cấu trúc
 
 ```
-vite.config.js   # proxy middleware /jira/* → Jira, đọc config từ .env hoặc header
-src/main.js      # gọi API, render dashboard, form Connect, filter, auto refresh
-src/style.css    # layout đồng bộ với gitlab-pipelines-viewer, theme light
+vite.config.js   # proxy middleware /jira/* → Jira: config từ .env hoặc header, allowlist method/path
+src/main.js      # API, dashboard, member / sprint / filter, performance list + calendar, kéo thả, popup tạo task, form Connect
+src/style.css    # layout full width đồng bộ với gitlab-pipelines-viewer, theme light
 ```

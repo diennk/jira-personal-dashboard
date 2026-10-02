@@ -197,3 +197,17 @@ tr.missing > td { background: #fef2f2; }
 button.mini { padding: 2px 8px; font-size: 12px; font-weight: 500; }
 button.mini:hover { background: #ea580c; border-color: #ea580c; color: #fff; }
 .label .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Task / worklog detail popup */
+#detail-dlg { width: min(36rem, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 25px rgb(15 23 42 / .15); }
+#detail-dlg::backdrop { background: rgb(15 23 42 / .35); }
+#detail-dlg h3 { display: flex; align-items: center; gap: 8px; }
+.dd-sum { margin: 0; font-size: 15px; font-weight: 500; color: var(--strong); overflow-wrap: anywhere; }
+#dd-body { display: grid; gap: 12px; }
+#dd-body dl { display: grid; grid-template-columns: 8rem 1fr; gap: 6px 12px; margin: 0; }
+#dd-body dt { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+#dd-body dd { margin: 0; color: var(--strong); overflow-wrap: anywhere; }
+.dd-wl { display: grid; gap: 8px; padding: 10px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; }
+.pre { white-space: pre-wrap; }
+.dd-desc { max-height: 240px; overflow-y: auto; padding: 8px; margin-top: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+details summary { cursor: pointer; color: var(--link); }
