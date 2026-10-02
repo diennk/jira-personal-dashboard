@@ -48,8 +48,22 @@ const SECTIONS = [
   ['Xong 14 ngày qua', 'assignee = currentUser() AND statusCategory = Done AND updated >= -14d ORDER BY updated DESC', 'c-green'],
 ]
 
-function table(issues) {
-  if (!issues.length) return '<p class="empty">Không có issue.</p>'
+// ---- Client-side filters (like gitlab-pipelines-viewer's filter bar) ----
+const filters = { search: '', status: '', project: '', type: '' }
+const matches = ({ key, fields: f }) => {
+  const q = filters.search.trim().toLowerCase()
+  return (
+    (!filters.status || f.status?.statusCategory?.key === filters.status) &&
+    (!filters.project || f.project?.key === filters.project) &&
+    (!filters.type || f.issuetype?.name === filters.type) &&
+    (!q || key.toLowerCase().includes(q) || String(f.summary).toLowerCase().includes(q))
+  )
+}
+
+function table(all) {
+  if (!all.length) return '<p class="empty">Không có issue.</p>'
+  const issues = all.filter(matches)
+  if (!issues.length) return '<p class="empty">Không có issue khớp bộ lọc.</p>'
   const today = new Date().toLocaleDateString('sv') // YYYY-MM-DD local
   return `<table><thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Type</th><th>Priority</th><th>Due</th><th>Updated</th></tr></thead><tbody>${issues
     .map(({ key, fields: f }) => {
@@ -74,7 +88,7 @@ const parseSprint = (s) =>
 
 async function sprints() {
   const sf = (await api('/rest/api/2/field')).find((f) => f.schema?.custom === 'com.pyxis.greenhopper.jira:gh-sprint')
-  if (!sf) return '<p class="empty">Không thấy field Sprint (Jira Software?).</p>'
+  if (!sf) return { issues: [], render: () => '<p class="empty">Không thấy field Sprint (Jira Software?).</p>' }
   const res = await search('assignee = currentUser() AND sprint in openSprints() ORDER BY Rank', 200, ',' + sf.id)
   const groups = new Map()
   for (const i of res.issues)
@@ -83,8 +97,8 @@ async function sprints() {
       if (!groups.has(String(sp.id))) groups.set(String(sp.id), { ...sp, issues: [] })
       groups.get(String(sp.id)).issues.push(i)
     }
-  if (!groups.size) return '<p class="empty">Không có sprint active.</p>'
-  return [...groups.values()]
+  if (!groups.size) return { issues: [], render: () => '<p class="empty">Không có sprint active.</p>' }
+  const render = () => [...groups.values()]
     .map((g) => {
       const done = g.issues.filter((i) => i.fields.status?.statusCategory?.key === 'done').length
       const pct = Math.round((done / g.issues.length) * 100)
@@ -99,6 +113,7 @@ async function sprints() {
       </div>`
     })
     .join('')
+  return { issues: res.issues, render }
 }
 
 const errBox = (e) => `<p class="error">${esc(e.message)}</p>`
@@ -106,6 +121,28 @@ const loadingBox = '<p class="empty">Đang tải…</p>'
 const set = (sel, html) => {
   const el = $(sel)
   if (el) el.innerHTML = html
+}
+
+// Last loaded data per section body, so filters re-render without refetching.
+const views = new Map() // selector -> { issues, render }
+const show = (sel, view) => {
+  views.set(sel, view)
+  set(sel, view.render())
+}
+function rerender() {
+  for (const [sel, v] of views) set(sel, v.render())
+}
+function fillOptions() {
+  const all = [...views.values()].flatMap((v) => v.issues)
+  const fill = (sel, label, values) => {
+    const el = $(sel)
+    if (!el) return
+    const cur = el.value
+    const opts = [...new Set([...values, cur].filter(Boolean))].sort()
+    el.innerHTML = `<option value="">${label}: All</option>` + opts.map((v) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(v)}</option>`).join('')
+  }
+  fill('#f-project', 'Project', all.map((i) => i.fields.project?.key))
+  fill('#f-type', 'Type', all.map((i) => i.fields.issuetype?.name))
 }
 
 // ---- Auto refresh (same options as gitlab-pipelines-viewer) ----
@@ -121,22 +158,24 @@ async function refresh() {
   $('#refresh').disabled = true
   set('#next', '')
   await Promise.allSettled([
-    sprints().then((h) => set('#sprint', h), (e) => set('#sprint', errBox(e))),
+    sprints().then((v) => show('#sprint', v), (e) => show('#sprint', { issues: [], render: () => errBox(e) })),
     ...SECTIONS.map(([, jql], k) =>
       search(jql).then(
         (r) => {
           set(`#n${k}`, r.total)
-          set(`#b${k}`, table(r.issues) + (r.total > r.issues.length ? `<p class="muted pad">Hiển thị ${r.issues.length}/${r.total}.</p>` : ''))
+          const more = r.total > r.issues.length ? `<p class="muted pad">Hiển thị ${r.issues.length}/${r.total}.</p>` : ''
+          show(`#b${k}`, { issues: r.issues, render: () => table(r.issues) + more })
         },
         (e) => {
           set(`#n${k}`, '!')
-          set(`#b${k}`, errBox(e))
+          show(`#b${k}`, { issues: [], render: () => errBox(e) })
         },
       ),
     ),
   ])
   loading = false
   lastUpdated = Date.now()
+  fillOptions()
   if (!$('#refresh')) return // left the dashboard meanwhile
   $('#refresh').disabled = false
   const t = new Date(lastUpdated).toLocaleTimeString()
@@ -170,12 +209,30 @@ function showDashboard(me, err) {
       </div>
     </header>
     <div class="cards">${SECTIONS.map(([t, , c], k) => `<a class="card" href="#s${k}"><div class="label">${esc(t)}</div><div class="value ${c}" id="n${k}">…</div></a>`).join('')}</div>
+    <div class="filters">
+      <input id="f-search" data-f="search" type="search" placeholder="🔎 Search key, summary..." value="${esc(filters.search)}">
+      <select data-f="status" aria-label="Status">${[['', 'Status: All'], ['new', 'To Do'], ['indeterminate', 'In Progress'], ['done', 'Done']]
+        .map(([v, l]) => `<option value="${v}" ${v === filters.status ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <select id="f-project" data-f="project" aria-label="Project"><option value="">Project: All</option></select>
+      <select id="f-type" data-f="type" aria-label="Type"><option value="">Type: All</option></select>
+      <button id="f-clear">Clear</button>
+    </div>
     <section><h2>Sprint hiện tại</h2><div class="body" id="sprint">${loadingBox}</div></section>
     ${SECTIONS.map(([t, jql], k) => `<section id="s${k}"><h2>${esc(t)}<a href="${esc(jqlLink(jql))}" target="_blank" rel="noopener">Mở trong Jira ↗</a></h2><div class="body" id="b${k}">${loadingBox}</div></section>`).join('')}
     <footer></footer>
   </main>`
   $('#refresh').onclick = refresh
   $('#auto').onchange = (e) => (autoMs = Number(e.target.value))
+  $('.filters').oninput = (e) => {
+    filters[e.target.dataset.f] = e.target.value
+    rerender()
+  }
+  $('#f-clear').onclick = () => {
+    Object.keys(filters).forEach((k) => (filters[k] = ''))
+    document.querySelectorAll('.filters [data-f]').forEach((el) => (el.value = ''))
+    rerender()
+  }
+  views.clear()
   if (!ENV_MODE) $('#settings').onclick = () => showForm('', true)
   lastUpdated = 0
   refresh()
