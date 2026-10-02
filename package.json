@@ -1,0 +1,11 @@
+{
+  "name": "jira-personal-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --open"
+  },
+  "devDependencies": {
+    "vite": "^8.3.1"
+  }
+}
