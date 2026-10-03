@@ -1,0 +1,49 @@
+/* Performance calendar: month grid with logged-hours heat (no Mantine equivalent). */
+.cal-wrap { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 8px; padding: 0 12px 12px; align-items: start; }
+.cal { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) repeat(2, minmax(0, .5fr)); gap: 4px; }
+.dow { padding: 4px; font-size: 12px; font-weight: 500; text-transform: uppercase; color: var(--mantine-color-dimmed); text-align: center; }
+.dow.weekend { color: var(--mantine-color-orange-8); }
+
+.day { position: relative; display: grid; grid-template-rows: auto 1fr auto; gap: 4px; min-width: 0; min-height: 76px; padding: 6px; border: 1px solid var(--mantine-color-gray-3); border-radius: var(--mantine-radius-sm); color: var(--mantine-color-dark-7); cursor: pointer; }
+.day:hover { border-color: var(--mantine-color-dark-4); }
+.dhead { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+.day .dn { font-size: 12px; font-weight: 600; color: inherit; }
+.day .dh { font-size: 13px; font-weight: 600; }
+.day .dm { font-size: 11px; padding-right: 22px; }
+.chips { display: grid; gap: 2px; align-content: start; min-width: 0; }
+.chip { display: flex; gap: 4px; align-items: flex-start; min-width: 0; padding: 1px 4px; font-size: 11px; line-height: 1.3; background: var(--mantine-color-white); color: var(--mantine-color-dark-7); border: 1px solid var(--mantine-color-gray-3); border-radius: 4px; cursor: grab; }
+.chip:hover { border-color: var(--mantine-color-dark-4); }
+.chip .cs { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.chip .ch { font-weight: 600; white-space: nowrap; }
+.day .add { position: absolute; right: 4px; bottom: 4px; opacity: .55; }
+.day:hover .add, .day .add:focus-visible { opacity: 1; }
+
+/* heat levels (one hue, light -> dark) */
+.lv0 { background: var(--mantine-color-white); }
+.lv1 { background: var(--mantine-color-blue-1); }
+.lv2 { background: var(--mantine-color-blue-3); }
+.lv3 { background: var(--mantine-color-blue-6); color: var(--mantine-color-white); border-color: var(--mantine-color-blue-6); }
+
+.day.weekend.lv0 { background: var(--mantine-color-orange-0); border-color: var(--mantine-color-orange-2); }
+.day.weekend .dn { color: var(--mantine-color-orange-8); }
+.day.weekend.lv3 .dn { color: var(--mantine-color-orange-1); }
+.day.missing { background: var(--mantine-color-red-0); border-color: var(--mantine-color-red-2); }
+.day.out { border-style: dashed; }
+.day.out .dn { color: var(--mantine-color-dimmed); font-weight: 400; }
+.day.out.lv3 .dn { color: var(--mantine-color-blue-1); }
+.day.future.lv0:not(.weekend) { background: var(--mantine-color-gray-0); color: var(--mantine-color-dimmed); }
+.day.today { box-shadow: inset 0 0 0 2px var(--mantine-color-orange-6); }
+.day.sel { outline: 2px solid var(--mantine-color-dark-6); outline-offset: 1px; }
+.day.drop { outline: 2px dashed var(--mantine-color-orange-6); outline-offset: 1px; }
+
+.todo { cursor: grab; }
+.todo:hover { border-color: var(--mantine-color-dark-4); }
+
+.cal-legend { font-size: 12px; color: var(--mantine-color-dimmed); }
+.cal-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.cal-legend i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--mantine-color-gray-3); }
+.cal-legend i.missing { background: var(--mantine-color-red-0); border-color: var(--mantine-color-red-3); }
+.cal-legend i.weekend { background: var(--mantine-color-orange-0); border-color: var(--mantine-color-orange-2); }
+
+@media (max-width: 900px) { .cal-wrap { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .day { min-height: 56px; padding: 4px; } .day .dm, .chip .cs { display: none; } }

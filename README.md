@@ -2,7 +2,7 @@
 
 Dashboard cá nhân cho Jira Server / Data Center: tasks, bugs, sprint, issue quá hạn, issue mình report / watch, performance theo tuần / ngày và lịch worklog có kéo thả để log work.
 
-Next.js (App Router). Mọi lời gọi Jira đi qua API route của Next.js `/api/jira/*` chạy phía server — Jira Server/DC không trả CORS header nên trình duyệt không gọi thẳng được, và token trong `.env` không bao giờ xuống trình duyệt. Giao diện là code DOM thuần ([src/main.js](src/main.js)) được mount trong một client component.
+Next.js (App Router) + [Mantine](https://mantine.dev) 9 (theme light). Mọi lời gọi Jira đi qua API route của Next.js `/api/jira/*` chạy phía server — Jira Server/DC không trả CORS header nên trình duyệt không gọi thẳng được, và token trong `.env` không bao giờ xuống trình duyệt. Giao diện là React component dùng Mantine (Table, Badge, Modal, Autocomplete, SegmentedControl, notifications...); riêng lưới calendar dùng CSS riêng ([src/components/calendar.css](src/components/calendar.css)) vì Mantine không có heatmap tháng.
 
 ## Yêu cầu
 
@@ -32,7 +32,7 @@ Có 2 cách, chọn một:
 |---|---|
 | `JIRA_URL` | URL gốc của Jira, gồm cả context path nếu có, ví dụ `https://jira.fpt.com/home` |
 | `JIRA_TOKEN` | Personal Access Token (Jira → Profile → Personal Access Tokens) |
-| `JIRA_INSECURE` | `1` nếu Jira dùng chứng chỉ self-signed / CA nội bộ (tắt kiểm tra TLS cho cả dev server) |
+| `JIRA_INSECURE` | `1` nếu Jira dùng chứng chỉ self-signed / CA nội bộ (tắt kiểm tra TLS cho cả process Next.js) |
 
 **2. Nhập trên màn hình** — để trống `JIRA_URL` / `JIRA_TOKEN`, app sẽ hiện form Connect. Token được gửi từ trình duyệt qua API route `/api/jira` tới Jira. Tick *Remember* sẽ lưu token dạng plain text trong `localStorage`; không tick thì chỉ giữ trong tab hiện tại (`sessionStorage`). Đổi / xoá qua nút **⚙ Settings**.
 
@@ -40,16 +40,19 @@ Có 2 cách, chọn một:
 
 ## Tính năng
 
+Thứ tự trên trang: header → summary cards → Performance → filter → Sprint → các section.
+
 ### Header
 
 - **Member**: gõ để tìm thành viên (assignable users của các project đang hiển thị, bản thân ở đầu danh sách). Chọn một người sẽ tải lại toàn bộ dashboard cho người đó (thay `currentUser()` trong JQL bằng username của họ). Xoá ô để quay về bản thân.
-- **Auto refresh**: Off / 10s / 30s / 60s / 5m, có đếm ngược. Dữ liệu cũ vẫn hiển thị trong lúc tải lại.
+- **Refresh ↻**: tải lại toàn bộ (không có auto refresh — dữ liệu tải khi mở trang, khi bấm Refresh và sau mỗi thao tác ghi lên Jira); dữ liệu cũ vẫn hiển thị trong lúc tải.
+- **⚙ Settings**: chỉ hiện khi không cấu hình `.env` — đổi Jira URL / token hoặc Disconnect.
 
 ### Summary cards & sections
 
 - **Summary cards**: số issue của từng nhóm, click để nhảy tới section.
 - **Sections**: Đang làm, To do, Bugs, Quá hạn, Đã report, Đang watch, Xong 14 ngày qua. Mỗi section có link *Mở trong Jira* với JQL tương ứng; bảng có cột Assignee, due date quá hạn tô đỏ.
-- **Search / filter**: lọc theo key / summary, status category, project, type (lọc phía client trên dữ liệu đã tải, giữ nguyên qua auto refresh).
+- **Search / filter**: lọc theo key / summary, status category, project, type (lọc phía client trên dữ liệu đã tải, giữ nguyên khi Refresh).
 - **Sprint**: mặc định hiện các sprint đang active; dropdown ở tiêu đề section cho chọn sprint khác (active / future / closed) mà member đang xem có issue, kèm progress và ngày bắt đầu / kết thúc. Danh sách lấy từ 200 issue cập nhật gần nhất của member.
 
 ### Performance
@@ -72,14 +75,15 @@ Click một tuần / ngày để xem chi tiết từng issue; dòng cuối là t
 
 - Mỗi ô ngày tô màu theo giờ logged (< 4h, 4–8h, ≥ 8h), hiện từng worklog (số issue, summary, giờ), ✓ số task hoàn thành, + số task nhận mới. Click ô để xem danh sách issue bên dưới; **click một worklog (hoặc task trên sidebar) để mở popup chi tiết**: issue, parent, assignee / reporter, due date, estimate / đã log / còn lại, mô tả, và thông tin chính worklog đó (ngày, giờ bắt đầu, số giờ, người log, ghi chú). **Worklog của chính bạn sửa được ngay trong popup** (ngày, giờ bắt đầu, số giờ, ghi chú → *Lưu worklog*; đổi số giờ thì remaining estimate tự điều chỉnh); worklog của người khác chỉ xem.
 - T7, CN: cột hẹp, tô cam. Ngày thường (đến hôm nay) không có worklog và không có task nào: tô đỏ nhạt, ghi *⚠ Chưa log*.
-- **Kéo worklog sang ngày khác** để đổi ngày log trên Jira (giữ giờ bắt đầu và số giờ, không đổi remaining estimate). Có hộp xác nhận trước khi ghi.
-- **Sidebar "Chưa logwork"** bên trái: task giao cho bạn chưa có worklog nào, ở mọi trạng thái (kể cả đã Resolved). **Kéo task vào ô ngày** để log work: nhập số giờ (mặc định = remaining estimate; vd `8h`, `1.5h`, `1,5`, `30m`), worklog bắt đầu 9:00 ngày đó và trừ remaining estimate như Jira.
+- **Kéo worklog sang ngày khác** để đổi ngày log trên Jira (giữ giờ bắt đầu và số giờ, không đổi remaining estimate). Có modal xác nhận trước khi ghi.
+- **Sidebar "Chưa logwork"** bên trái: task giao cho bạn chưa có worklog nào, ở mọi trạng thái (kể cả đã Resolved). **Kéo task vào ô ngày** để log work: modal hỏi số giờ (mặc định = remaining estimate; vd `8h`, `1.5h`, `1,5`, `30m`), worklog bắt đầu 9:00 ngày đó và trừ remaining estimate như Jira.
 - **Nút + ở góc dưới phải ô ngày**: popup tạo task và log work ngày đó.
-  - Luôn tạo **Sub-task** giao cho bạn (reporter cũng là bạn); **bắt buộc chọn parent**. Gợi ý: tất cả issue không phải sub-task trong các sprint active của bạn (và sprint đang chọn ở section Sprint), parent dùng gần đây xếp đầu. Tiêu đề đầy đủ của parent hiện dưới ô nhập.
+  - Luôn tạo **Sub-task** giao cho bạn (reporter cũng là bạn); **bắt buộc chọn parent**. Gợi ý: tất cả issue không phải sub-task trong các sprint active của bạn (và sprint đang chọn ở section Sprint), parent dùng gần đây xếp đầu; gõ được theo key hoặc summary. Tiêu đề đầy đủ của parent hiện dưới ô nhập.
   - Parent phải tồn tại, không phải sub-task và cùng project — kiểm tra trước khi tạo.
   - Mặc định: estimate và log work = **8h trừ số giờ đã log trong ngày**, due date = ngày đó. Để trống ô Log work thì chỉ tạo task.
 - **Nút "+ Tạo task" trên sidebar**: cùng popup nhưng chỉ tạo task (estimate 8h, due date hôm nay, không log work); task mới hiện trong sidebar để kéo vào ngày sau.
 - Sidebar, nút + và nút Tạo task chỉ dùng được khi xem dashboard của chính mình (worklog luôn được tạo dưới tên người kết nối).
+- Lỗi khi ghi lên Jira (không có quyền, số giờ sai...) hiện dưới dạng notification góc trên phải; lỗi trong popup hiện ngay trong popup.
 
 ## Dữ liệu app ghi lên Jira
 
@@ -96,7 +100,7 @@ API route chỉ chuyển tiếp GET và đúng các request ghi trên (theo path
 
 ## Tuỳ biến
 
-Sửa mảng `SECTIONS` trong [src/main.js](src/main.js): mỗi phần tử là `[tiêu đề, JQL, màu card]`. Màu card: `c-blue`, `c-sky`, `c-amber`, `c-red`, `c-green` hoặc `''`.
+Sửa mảng `SECTIONS` trong [src/lib/jira.js](src/lib/jira.js): mỗi phần tử là `{ title, jql, color }`, `color` là màu Mantine (vd `blue.6`, `red.6`, `teal.7`) hoặc bỏ trống.
 
 Các query dùng `statusCategory` thay vì `resolution` vì workflow không set Resolution khi chuyển sang Done. Vì vậy "Xong 14 ngày qua" dùng `updated` làm mốc, còn "Hoàn thành" trong Performance dùng lần đổi status cuối — cả hai là xấp xỉ.
 
@@ -113,8 +117,19 @@ Các query dùng `statusCategory` thay vì `resolution` vì workflow không set 
 ```
 app/api/jira/[...path]/route.js  # API route /api/jira/* → Jira: config từ .env hoặc header, allowlist method/path, chặn origin lạ
 app/page.js                      # server component: đọc .env, chỉ truyền URL + "đã cấu hình chưa" xuống client
-app/dashboard.js                 # client component: mount #app, gọi boot() của src/main.js
-app/layout.js                    # <html>, import style.css
-src/main.js                      # API, dashboard, member / sprint / filter, performance list + calendar, kéo thả, popup tạo task, form Connect
-src/style.css                    # layout full width đồng bộ với gitlab-pipelines-viewer, theme light
+app/layout.js                    # <html>, CSS của Mantine + calendar
+app/providers.js                 # MantineProvider (theme light, primary orange, link xanh), ModalsProvider, Notifications
+src/lib/jira.js                  # client gọi /api/jira, SECTIONS, sprint, performance, members, createmeta / parent
+src/lib/format.js                # helper ngày / giờ / duration
+src/components/App.js            # root: màn Connect hoặc Dashboard
+src/components/ConnectForm.js    # màn Connect / Settings
+src/components/Dashboard.js      # header (member, Refresh, Settings), cards, filter, sections
+src/components/SprintSection.js  # section Sprint + chọn sprint
+src/components/Performance.js    # Performance: List / Calendar, kéo thả, log work, mở popup
+src/components/PerfList.js       # bảng theo tuần / ngày
+src/components/PerfCalendar.js   # lịch tháng + sidebar Chưa logwork
+src/components/CreateTaskModal.js# popup tạo sub-task + log work
+src/components/DetailModal.js    # popup chi tiết + sửa worklog
+src/components/IssueTable.js     # bảng issue, StatusBadge
+src/components/calendar.css      # lưới lịch, màu heat, T7/CN, Chưa log
 ```
