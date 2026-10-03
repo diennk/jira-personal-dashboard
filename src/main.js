@@ -1,7 +1,6 @@
-import './style.css'
-
+// Plain-DOM dashboard; app/dashboard.js mounts #app and calls boot() with the server's config.
 const KEY = 'jira-personal-dashboard:config'
-const ENV_MODE = __ENV_CONFIGURED__ // .env has URL + token: no Settings screen
+let ENV_MODE = false // .env has URL + token: no Settings screen (set by boot)
 const loadSaved = () => {
   try {
     return JSON.parse(localStorage.getItem(KEY) ?? sessionStorage.getItem(KEY))
@@ -9,9 +8,9 @@ const loadSaved = () => {
     return null
   }
 }
-let cfg = ENV_MODE ? { url: __JIRA_URL__ } : loadSaved() // { url, token? }
+let cfg = null // { url, token? }
 
-const app = document.querySelector('#app')
+let app = null // #app, set by boot
 const $ = (sel) => document.querySelector(sel)
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('vi-VN') : '')
@@ -28,7 +27,7 @@ async function api(path, { method = 'GET', body } = {}) {
   const headers = { Accept: 'application/json' }
   if (body) headers['Content-Type'] = 'application/json'
   if (!ENV_MODE) Object.assign(headers, { 'X-Jira-Url': cfg.url, 'X-Jira-Token': cfg.token })
-  const r = await fetch('/jira' + path, { method, headers, body: body && JSON.stringify(body) })
+  const r = await fetch('/api/jira' + path, { method, headers, body: body && JSON.stringify(body) })
   if (!r.ok) throw new Error(`${r.status} ${r.statusText} ${(await r.text()).slice(0, 200)}`)
   return r.status === 204 ? null : r.json()
 }
@@ -1077,4 +1076,13 @@ async function start() {
   }
 }
 
-start()
+// Entry point (called once per page load from app/dashboard.js).
+let booted = false
+export function boot({ envConfigured, jiraUrl }) {
+  if (booted) return // React StrictMode runs effects twice in dev
+  booted = true
+  ENV_MODE = envConfigured
+  cfg = ENV_MODE ? { url: jiraUrl } : loadSaved()
+  app = document.querySelector('#app')
+  start()
+}

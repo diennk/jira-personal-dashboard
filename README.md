@@ -2,7 +2,7 @@
 
 Dashboard cá nhân cho Jira Server / Data Center: tasks, bugs, sprint, issue quá hạn, issue mình report / watch, performance theo tuần / ngày và lịch worklog có kéo thả để log work.
 
-Vite thuần + vanilla JS, không có backend riêng. Vite dev server đóng vai trò proxy tới Jira (Jira Server/DC không trả CORS header nên trình duyệt không gọi thẳng được).
+Next.js (App Router). Mọi lời gọi Jira đi qua API route của Next.js `/api/jira/*` chạy phía server — Jira Server/DC không trả CORS header nên trình duyệt không gọi thẳng được, và token trong `.env` không bao giờ xuống trình duyệt. Giao diện là code DOM thuần ([src/main.js](src/main.js)) được mount trong một client component.
 
 ## Yêu cầu
 
@@ -18,22 +18,23 @@ cp .env.example .env   # tuỳ chọn, xem phần Cấu hình
 yarn dev
 ```
 
-Mở http://localhost:5190.
+Mở http://localhost:5190. Server chỉ nghe trên `127.0.0.1` (không lộ ra mạng LAN), vì API route dùng token trong `.env`.
+
+Bản production chạy local: `yarn build && yarn start`.
 
 ## Cấu hình
 
 Có 2 cách, chọn một:
 
-**1. Qua `.env` (khuyến nghị)** — token chỉ nằm trong Vite dev server, không xuống trình duyệt. Màn hình Settings bị ẩn.
+**1. Qua `.env` (khuyến nghị)** — token chỉ nằm trong server Next.js, không xuống trình duyệt. Màn hình Settings bị ẩn.
 
 | Biến | Mô tả |
 |---|---|
 | `JIRA_URL` | URL gốc của Jira, gồm cả context path nếu có, ví dụ `https://jira.fpt.com/home` |
 | `JIRA_TOKEN` | Personal Access Token (Jira → Profile → Personal Access Tokens) |
 | `JIRA_INSECURE` | `1` nếu Jira dùng chứng chỉ self-signed / CA nội bộ (tắt kiểm tra TLS cho cả dev server) |
-| `PORT` | Cổng dev server, mặc định `5190` |
 
-**2. Nhập trên màn hình** — để trống `JIRA_URL` / `JIRA_TOKEN`, app sẽ hiện form Connect. Token được gửi từ trình duyệt qua proxy tới Jira. Tick *Remember* sẽ lưu token dạng plain text trong `localStorage`; không tick thì chỉ giữ trong tab hiện tại (`sessionStorage`). Đổi / xoá qua nút **⚙ Settings**.
+**2. Nhập trên màn hình** — để trống `JIRA_URL` / `JIRA_TOKEN`, app sẽ hiện form Connect. Token được gửi từ trình duyệt qua API route `/api/jira` tới Jira. Tick *Remember* sẽ lưu token dạng plain text trong `localStorage`; không tick thì chỉ giữ trong tab hiện tại (`sessionStorage`). Đổi / xoá qua nút **⚙ Settings**.
 
 > Nếu Jira trả `301` hoặc lỗi lạ, kiểm tra context path: ví dụ `https://jira.fpt.com` redirect sang `/home`, nên `JIRA_URL` phải là `https://jira.fpt.com/home`.
 
@@ -91,7 +92,7 @@ Chỉ những thao tác sau, đều do người dùng chủ động:
 | Kéo task từ sidebar vào ngày | `POST /rest/api/2/issue/{key}/worklog` |
 | Popup tạo task | `POST /rest/api/2/issue` (+ `POST .../worklog` nếu có log work) |
 
-Proxy chỉ chuyển tiếp GET và đúng các request ghi trên (theo path); mọi request ghi khác bị chặn (405). Request từ origin khác bị chặn (403).
+API route chỉ chuyển tiếp GET và đúng các request ghi trên (theo path); mọi request ghi khác bị chặn (405). Request từ origin khác bị chặn (403).
 
 ## Tuỳ biến
 
@@ -101,7 +102,7 @@ Các query dùng `statusCategory` thay vì `resolution` vì workflow không set 
 
 ## Giới hạn
 
-- Chỉ chạy qua `yarn dev` hoặc `vite preview` (cần proxy). Build tĩnh deploy lên host khác sẽ bị CORS.
+- Cần server Next.js (`yarn dev` / `yarn start`) vì Jira được gọi qua API route; không export tĩnh được.
 - Mỗi section tối đa 50 issue, sprint tối đa 200, danh sách sprint lấy từ 200 issue gần nhất. Performance / calendar đọc đủ mọi trang kết quả.
 - Ngày của worklog lấy theo timezone của chính worklog, giả định trùng timezone trình duyệt.
 - Kéo thả cần chuột (không hỗ trợ cảm ứng).
@@ -110,7 +111,10 @@ Các query dùng `statusCategory` thay vì `resolution` vì workflow không set 
 ## Cấu trúc
 
 ```
-vite.config.js   # proxy middleware /jira/* → Jira: config từ .env hoặc header, allowlist method/path
-src/main.js      # API, dashboard, member / sprint / filter, performance list + calendar, kéo thả, popup tạo task, form Connect
-src/style.css    # layout full width đồng bộ với gitlab-pipelines-viewer, theme light
+app/api/jira/[...path]/route.js  # API route /api/jira/* → Jira: config từ .env hoặc header, allowlist method/path, chặn origin lạ
+app/page.js                      # server component: đọc .env, chỉ truyền URL + "đã cấu hình chưa" xuống client
+app/dashboard.js                 # client component: mount #app, gọi boot() của src/main.js
+app/layout.js                    # <html>, import style.css
+src/main.js                      # API, dashboard, member / sprint / filter, performance list + calendar, kéo thả, popup tạo task, form Connect
+src/style.css                    # layout full width đồng bộ với gitlab-pipelines-viewer, theme light
 ```
