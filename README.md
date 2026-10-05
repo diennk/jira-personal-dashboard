@@ -22,6 +22,22 @@ Mở http://localhost:5190. Server chỉ nghe trên `127.0.0.1` (không lộ ra 
 
 Bản production chạy local: `yarn build && yarn start`.
 
+## Deploy bằng Docker trên VPS
+
+NPM (Nginx Proxy Manager) và app cần cùng tham gia Docker network `npm_network`. Tạo network một lần nếu chưa có:
+
+```bash
+docker network create npm_network
+```
+
+Trong thư mục dự án, tạo `.env` từ `.env.example` và điền `JIRA_URL`, `JIRA_TOKEN` nếu muốn cấu hình Jira ở server; để trống thì có thể kết nối từ giao diện. Sau đó build và chạy:
+
+```bash
+docker compose up -d --build
+```
+
+Trong NPM, đặt Forward Hostname / IP là `jira-personal-dashboard` và Forward Port là `5190`. Compose không publish port ra host; chỉ proxy/container trong `npm_network` truy cập được app.
+
 ## Cấu hình
 
 Có 2 cách, chọn một:

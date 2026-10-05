@@ -2,6 +2,7 @@
   "name": "jira-personal-dashboard",
   "private": true,
   "type": "module",
+  "packageManager": "yarn@4.18.1",
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 5190",
     "build": "next build",
