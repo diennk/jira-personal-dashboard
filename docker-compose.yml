@@ -1,0 +1,17 @@
+services:
+  jira-personal-dashboard:
+    build: .
+    container_name: jira-personal-dashboard
+    restart: unless-stopped
+    environment:
+      JIRA_URL: ${JIRA_URL:-}
+      JIRA_TOKEN: ${JIRA_TOKEN:-}
+      JIRA_INSECURE: ${JIRA_INSECURE:-0}
+    expose:
+      - "5190"
+    networks:
+      - npm_network
+
+networks:
+  npm_network:
+    external: true
