@@ -26,19 +26,22 @@ export default function Performance({ jira, me, tick, projects, sprintIds, sprin
   const [reload, setReload] = useState(0)
   const [createFor, setCreateFor] = useState(null) // { day, withLog }
   const [detailFor, setDetailFor] = useState(null) // { issue, wl? }
+  const [story, setStory] = useState(null) // sidebar filter: parent story key; null = all
   const req = useRef(0)
 
   useEffect(() => {
     const n = ++req.current // only the latest request writes
     const who = jira.subject?.name ?? me?.name
+    const side = view === 'cal' && own
     Promise.all([
       loadPerformance(jira, perfSpec(view, range, month), who),
-      view === 'cal' && own ? jira.searchAll(BACKLOG_JQL, PERF_FIELDS) : [],
+      side ? jira.searchAll(BACKLOG_JQL, PERF_FIELDS + ',parent') : [],
+      side && sprintIds.length ? jira.searchAll(`sprint in (${sprintIds.map(Number).join(',')}) AND issuetype = Story ORDER BY Rank`, 'summary') : [],
     ]).then(
-      ([periods, backlog]) => n === req.current && setData({ periods, backlog }),
+      ([periods, backlog, stories]) => n === req.current && setData({ periods, backlog, stories }),
       (error) => n === req.current && setData({ error }),
     )
-  }, [jira, me, tick, view, range, month, reload, own])
+  }, [jira, me, tick, view, range, month, reload, own, sprintIds])
 
   // A new view / range / month shows a loader instead of data shaped for the old one.
   const change = (fn) => (value) => {
@@ -122,7 +125,10 @@ export default function Performance({ jira, me, tick, projects, sprintIds, sprin
       days={data.periods}
       month={month}
       selected={open}
-      backlog={data.backlog}
+      backlog={story ? data.backlog.filter((i) => i.fields.parent?.key === story) : data.backlog}
+      stories={data.stories}
+      story={story}
+      onStory={setStory}
       own={own}
       browse={jira.browse}
       onMonth={onMonth}

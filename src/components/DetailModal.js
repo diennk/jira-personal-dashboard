@@ -90,19 +90,22 @@ function WorklogForm({ jira, issue, wl, mine, onSaved }) {
 }
 
 // target = { issue, wl? } or null. onSaved(newDate) after a worklog edit.
-export default function DetailModal({ jira, me, target, onClose, onSaved }) {
+export default function DetailModal({ jira, me, target: open, onClose, onSaved }) {
+  // Keep the last target while the close animation runs (target is already null then).
+  const [target, setTarget] = useState(open)
+  if (open && open !== target) setTarget(open)
   const [data, setData] = useState(null) // { f, wl } | { error }
   const [showDesc, setShowDesc] = useState(false)
   const [reload, setReload] = useState(0)
 
   useEffect(() => {
-    if (!target) return
+    if (!open) return
     let live = true
     setData(null)
     setShowDesc(false)
     Promise.all([
-      jira.api(`/rest/api/2/issue/${encodeURIComponent(target.issue)}?fields=${ISSUE_FIELDS}`).then((r) => r.fields),
-      target.wl ? jira.api(worklogPath(target.issue, target.wl)) : null,
+      jira.api(`/rest/api/2/issue/${encodeURIComponent(open.issue)}?fields=${ISSUE_FIELDS}`).then((r) => r.fields),
+      open.wl ? jira.api(worklogPath(open.issue, open.wl)) : null,
     ]).then(
       ([f, wl]) => live && setData({ f, wl }),
       (error) => live && setData({ error }),
@@ -110,7 +113,7 @@ export default function DetailModal({ jira, me, target, onClose, onSaved }) {
     return () => {
       live = false
     }
-  }, [jira, target, reload])
+  }, [jira, open, reload])
 
   const f = data?.f
   const t = f?.timetracking ?? {}
@@ -146,7 +149,7 @@ export default function DetailModal({ jira, me, target, onClose, onSaved }) {
 
   return (
     <Modal
-      opened={!!target}
+      opened={!!open}
       onClose={onClose}
       size="lg"
       title={

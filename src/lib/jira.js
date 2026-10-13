@@ -24,7 +24,7 @@ export const SECTIONS = [
   // ponytail: workflow doesn't set resolution & DC lacks statusCategoryChangedDate, so "updated" approximates done-date
   { title: 'Xong 14 ngày qua', jql: 'assignee = currentUser() AND statusCategory = Done AND updated >= -14d ORDER BY updated DESC', color: 'teal.7' },
 ]
-export const BACKLOG_JQL = 'assignee = currentUser() AND timespent is EMPTY ORDER BY updated DESC' // any status, incl. resolved
+export const BACKLOG_JQL = 'assignee = currentUser() AND issuetype in subTaskIssueTypes() AND timespent is EMPTY ORDER BY updated DESC' // any status, incl. resolved
 
 // One client per (connection, viewed member). `subject` = { name, displayName } or null for the connected user.
 export function makeJira(cfg, envMode, subject = null) {

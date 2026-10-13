@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { ActionIcon, Anchor, Badge, Box, Button, Group, Paper, ScrollArea, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core'
+import { ActionIcon, Anchor, Badge, Box, Button, Group, Paper, ScrollArea, Select, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core'
 import { ddmm, hrs, isWeekend, sum, ymd } from '../lib/format'
 import { Empty, StatusBadge } from './IssueTable'
 import { isMissing, MissingBadge, PeriodIssues, stats } from './PerfList'
@@ -16,7 +16,7 @@ const LEVELS = [
 const level = (s) => (!s ? 0 : s < 4 * 3600 ? 1 : s < 8 * 3600 ? 2 : 3)
 const DOW = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
 
-function Backlog({ tasks, own, browse, onDragStart, onOpen, onCreate }) {
+function Backlog({ tasks, stories, story, onStory, own, browse, onDragStart, onOpen, onCreate }) {
   if (!own)
     return (
       <Paper withBorder p="sm" bg="gray.0">
@@ -43,8 +43,19 @@ function Backlog({ tasks, own, browse, onDragStart, onOpen, onCreate }) {
           + Tạo task
         </Button>
       </Group>
+      <Select
+        size="xs"
+        mb={4}
+        aria-label="Story"
+        placeholder="Story: All"
+        data={stories.map((i) => ({ value: i.key, label: `${i.key} ${i.fields.summary}` }))}
+        value={story}
+        onChange={onStory}
+        clearable
+        searchable
+      />
       <Text size="xs" c="dimmed" mb="xs">
-        Kéo task vào ô ngày để log work.
+        Kéo sub-task vào ô ngày để log work.
       </Text>
       <ScrollArea.Autosize mah={640}>
         <Stack gap={6}>
@@ -88,7 +99,7 @@ function Backlog({ tasks, own, browse, onDragStart, onOpen, onCreate }) {
 
 // Month grid. Callbacks: onMonth(-1|0|1), onSelect(day), onMove(chip, day), onLog(task, day), onAdd(day),
 // onCreate(), onOpen(issueKey, worklogId?).
-export default function PerfCalendar({ days, month, selected, backlog, own, browse, onMonth, onSelect, onMove, onLog, onAdd, onCreate, onOpen }) {
+export default function PerfCalendar({ days, month, selected, backlog, stories, story, onStory, own, browse, onMonth, onSelect, onMove, onLog, onAdd, onCreate, onOpen }) {
   const dragged = useRef(null) // { issue, wl?, started?, secs? } (worklog chip) | { issue, est } (sidebar task)
   const [dropDay, setDropDay] = useState('')
   const m = month.getMonth()
@@ -237,7 +248,7 @@ export default function PerfCalendar({ days, month, selected, backlog, own, brow
         </Group>
       </Group>
       <Box className="cal-wrap" onDragEnd={endDrag}>
-        <Backlog tasks={backlog} own={own} browse={browse} onDragStart={startDrag} onOpen={(k) => onOpen(k)} onCreate={onCreate} />
+        <Backlog tasks={backlog} stories={stories} story={story} onStory={onStory} own={own} browse={browse} onDragStart={startDrag} onOpen={(k) => onOpen(k)} onCreate={onCreate} />
         <div className="cal">
           {DOW.map((d, k) => (
             <div key={d} className={`dow ${k > 4 ? 'weekend' : ''}`}>
