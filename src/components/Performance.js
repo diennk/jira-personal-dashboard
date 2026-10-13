@@ -36,7 +36,8 @@ export default function Performance({ jira, me, tick, projects, sprintIds, sprin
     Promise.all([
       loadPerformance(jira, perfSpec(view, range, month), who),
       side ? jira.searchAll(BACKLOG_JQL, PERF_FIELDS + ',parent') : [],
-      side && sprintIds.length ? jira.searchAll(`sprint in (${sprintIds.map(Number).join(',')}) AND issuetype = Story ORDER BY Rank`, 'summary') : [],
+      // no sprint of my own -> every open sprint
+      side ? jira.searchAll(`sprint in ${sprintIds.length ? `(${sprintIds.map(Number).join(',')})` : 'openSprints()'} AND issuetype = Story ORDER BY Rank`, 'summary') : [],
     ]).then(
       ([periods, backlog, stories]) => n === req.current && setData({ periods, backlog, stories }),
       (error) => n === req.current && setData({ error }),
